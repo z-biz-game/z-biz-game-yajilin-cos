@@ -3,7 +3,7 @@
 // 以及同一批探针 `_tmp-yajilin-gen.mjs:9` 的 recompute()。规则口径与角色定义写在 grid.js 文件头。
 //
 // ⚠ 本文件不读环境变量、不碰 node API：引擎要在浏览器里原样跑，
-// 剂量表的 attempt/candLimit/loopFracs 参数全部由调用方（tools/generator-probe.mjs）显式传。
+// 剂量表的 attempt/candLimit/loopFracs 参数全部由调用方（剂量表那一套 probe，见 DESIGN §三）显式传。
 import { Board, DIRS } from './grid.js';
 import { hashSeed, mulberry32 } from './rng.js';
 

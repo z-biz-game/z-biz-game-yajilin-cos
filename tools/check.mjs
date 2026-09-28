@@ -123,5 +123,24 @@ for (const [name, args] of SUITES) {
 }
 ok(got.length === SUITES.length, `只收到 ${got.length}/${SUITES.length} 套 RESULT：${got.join(' ')}`);
 
+/* ---------- 6) 产物边界：本地把 CI 那两条 grep 原样跑一遍 ----------
+ * 为什么要在 node 侧门里再跑一次：这两条原先**只有 CI 有**，于是「npm test 全绿」与「CI 绿」
+ * 不是一回事。本仓第一次推上去就是靠这条抓到红的——引擎注释里写了 `tools/generator-probe.mjs`
+ * 这样的路径，本地六套照样绿，CI 的边界 grep 当场红。
+ * 口径与 CI 逐字一致：同一个正则、同样**不分注释**（一行注释提到 tools/ 也算命中），
+ * 因为这条门要管的是「Pages 产物里到底有没有那些文件」，而 grep 不知道哪段是注释。
+ */
+const BOUNDARY = /tools\/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test)/;
+const IMPORT_TOOLS = /(import|export)[^;]*from '[^']*tools\//;
+const runtimeFiles = walk(join(ROOT, 'js'), []).concat([join(ROOT, 'index.html')]).filter((f) => existsSync(f));
+ok(runtimeFiles.length >= 7, `运行时产物只扫到 ${runtimeFiles.length} 个文件（js/** + index.html）`);
+for (const f of runtimeFiles) {
+  const src = readFileSync(f, 'utf8');
+  const rel = relative(ROOT, f);
+  ok(!BOUNDARY.test(src), `${rel}：提到了 tools/ 下的门禁文件——Pages 产物里不会有它（要谈测量口径请写 DESIGN）`);
+  ok(!IMPORT_TOOLS.test(src), `${rel}：运行时模块 import 了 tools/ 下的东西——分层倒了`);
+}
+console.log(`边界门：${runtimeFiles.length} 个运行时文件 × 2 条 grep，与 CI 同正则`);
+
 console.log(`\nRESULT check ok=${fails === 0} checks=${checks} fails=${fails}（套件 ${SUITES.map((s) => s[0]).join(' ')}）`);
 process.exit(fails === 0 ? 0 : 1);

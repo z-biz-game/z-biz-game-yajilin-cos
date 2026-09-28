@@ -125,7 +125,8 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 所以只能读源码（`tools/check.mjs:72-77`）。
 
 4. **六套 suite**：rule / pencil / counter / golden-write(`--check`) / golden / generator-probe
-   （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 102，红 0；
+   （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 129，红 0
+   （聚合里除了「六套齐 + 逐行格式」还有下面第 6 条那 27 项边界断言）；
    口径提醒：`tools/check.mjs:17-24` 的 `SUITES` 数组与 `tools/verify.sh:265` 的 `need` 列表都是六条，
    `tools/verify.sh:245` 那行 echo 也念「六套」。
    曾经有四行**注释**写着「五套 / five suites」（`tools/verify.sh:241`、`.github/workflows/ci.yml:13`、
@@ -142,10 +143,18 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
    这三种都表现为「绿了，但少跑了一套」。CI 那一侧**再独立数一遍**
    （`.github/workflows/ci.yml:65-87`，缺行即红），理由是「check.mjs 内部也断言六套全到，
    但那是被测者自己数的」（`.github/workflows/ci.yml:62-64`）；
-6. **分层闸**：CI 里两条 grep 把「`js/` 不许 import `tools/`」「运行时产物不许引用 `tools/` 下的任何测试资产」
-   钉死（`.github/workflows/ci.yml:26-42`）。这不是洁癖：`tools/golden.mjs` 冻结的是每张出货盘的
+6. **分层闸**：两条 grep 把「`js/` 不许 import `tools/`」「运行时产物不许提到 `tools/` 下的任何门禁文件」
+   钉死（`.github/workflows/ci.yml:26-42`，`tools/check.mjs:126-143` 用**同一个正则**在本地再跑一遍）。
+   这不是洁癖：`tools/golden.mjs` 冻结的是每张出货盘的
    **认证解**，一旦它进了 Pages 产物，答案就在公网上，而「被测的字节就是出货的字节」这句话
    立刻不可证伪。
+   这一条为什么现在有两处：本仓第一次推上去时 CI 就是红在这条上（step
+   `runtime bundle references nothing under tools/`），命中 4 处引擎**注释**里的
+   `tools/generator-probe.mjs` / `tools/check.mjs` 字样，而当时本地六套全绿——
+   「本地绿」与「CI 绿」根本不是同一件事，因为这两条 grep 原先只有 CI 有。
+   修法是把门搬到本地（不是把 CI 那条放宽）：注释改指 DESIGN 的对应小节，
+   正则与 CI 逐字一致，同样**不分注释**（grep 不知道哪段是注释，所以门也不假装知道）。
+   本轮读成「边界门：13 个运行时文件 × 2 条 grep，零命中」。
 
 ### 浏览器侧：六条腿各断言什么
 

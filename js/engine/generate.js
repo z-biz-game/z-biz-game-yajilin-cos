@@ -6,7 +6,7 @@
 //
 // 与探针唯一的差别是**默认值口径**（需求卡第四节）：
 //   探针里 maxAttempts / candLimit / loopFracs 的默认值来自环境变量，
-//   引擎里一个都不读——测量口径由调用方（tools/generator-probe.mjs）显式传参，
+//   引擎里一个都不读——测量口径由调用方（剂量表那一套 probe，见 DESIGN §三）显式传参，
 //   引擎里一个环境变量都不读，默认值就是**出货策略**本身：loopFracs = [0.45, 0.5, 0.55]、ATTEMPTS = 60。
 //
 // ⚠ 必须披露的短板 2（需求卡第五节坑 2）：**出题器自记的解会说谎**。
@@ -99,7 +99,7 @@ export function pSet(board, { maxRounds = DEFAULT_MAX_ROUNDS, candLimit = DEFAUL
 //     stuck = 铅笔没全解，没跑计数；over = 真跑了计数但预算耗尽（stopped ⇒ count 不可信）。
 //   同时按需求卡第四节的精神补一条闸门：stopped 的那次删除**不许**被保留——
 //   探针里 `count === 1` 单独成立就会留，理论上存在「数到 1 个就耗尽预算」的漏洞。
-//   实测这个补丁不动任何盘：28 张流水线盘上 stopped∧count===1 出现 0 次（见 tools/check.mjs 复跑）。
+//   实测这个补丁不动任何盘：28 张流水线盘上 stopped∧count===1 出现 0 次（总门复跑，见 DESIGN §三）。
 export function pDig(board, { budgetNodes = DIG_BUDGET_NODES, passes = 4 } = {}) {
   let removed = 0, tried = 0, over = 0, unsound = 0, stuck = 0;
   for (let pass = 0; pass < passes; pass++) {

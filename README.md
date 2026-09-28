@@ -212,7 +212,9 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 
 `node tools/check.mjs` 本轮：7 行 RESULT、741 条断言、红 0。
 逐套：rule 48 / pencil 435 / counter 71 / golden-write 7 / golden-test 156 / generator-probe 24，
-聚合 check 102（套件表 `tools/check.mjs:17-24`，行数与格式判定 `tools/check.mjs:106-124`）。
+聚合 check 129（套件表 `tools/check.mjs:17-24`，行数与格式判定 `tools/check.mjs:106-124`，
+外加产物边界那两条 grep 的 27 项 `tools/check.mjs:126-143`——它们与 CI 用同一个正则，
+本仓第一次推上去时 CI 就是红在这一条上，而当时本地全绿）。
 
 `bash tools/verify.sh` 本轮 ALL GREEN：283 条浏览器断言、红 0——
 root 9 场 118 条、prefix 9 场 118 条、mobile 3 场 47 条；
