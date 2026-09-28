@@ -421,6 +421,11 @@ window.addEventListener('keydown', async (ev) => {
     anchor = -1;
     srCell.textContent = game.cellReport(cursor);
   };
+  // #sr-cell 是 aria-live 的那张嘴：只在方向键时改口是不够的——B / 退格 / Z 都真的改了盘面，
+  // 读完「第 1 行第 3 列 没落笔」再按 B，屏幕上那句话说的是上一秒的事。
+  const announce = () => {
+    if (game && cursor >= 0) srCell.textContent = game.cellReport(cursor);
+  };
   if (k === 'ArrowUp') move(-1, 0);
   else if (k === 'ArrowDown') move(1, 0);
   else if (k === 'ArrowLeft') move(0, -1);
@@ -456,6 +461,7 @@ window.addEventListener('keydown', async (ev) => {
     startClock();
     game.toggleBlack(cursor < 0 ? 0 : cursor);
     render();
+    announce();
     await checkWin();
     persist();
   } else if (k === 'Backspace' || k === 'Delete') {
@@ -463,11 +469,13 @@ window.addEventListener('keydown', async (ev) => {
     startClock();
     game.eraseAt(cursor < 0 ? 0 : cursor);
     render();
+    announce();
     await checkWin();
     persist();
   } else if (k === 'z' || k === 'Z') {
     game.undo();
     render();
+    announce();
     await checkWin();
     persist();
   } else if (k === 'h' || k === 'H') {
