@@ -1,6 +1,6 @@
 // 规则模型：真值审计器 verify() + 「由解出题」的原始采样器 generate()。
-// 逐字符搬自 _tmp-yajilin-model.mjs（verify :56-98、sampleCycle :101-119、generate :121-150），
-// 以及 _tmp-yajilin-gen.mjs:9 的 recompute()。规则口径与角色定义写在 grid.js 文件头。
+// 逐字符搬自桌面筛探针 `_tmp-yajilin-model.mjs`（verify :56-98、sampleCycle :101-119、generate :121-150），该文件在仓外（DESIGN §八 末条）；
+// 以及同一批探针 `_tmp-yajilin-gen.mjs:9` 的 recompute()。规则口径与角色定义写在 grid.js 文件头。
 //
 // ⚠ 本文件不读环境变量、不碰 node API：引擎要在浏览器里原样跑，
 // 剂量表的 attempt/candLimit/loopFracs 参数全部由调用方（tools/generator-probe.mjs）显式传。

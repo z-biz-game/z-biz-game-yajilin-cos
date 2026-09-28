@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  # ── job 1：node 侧的门（语法闸 + 纯度闸 + 五套 suite + golden 对账 + 剂量表）──────
+  # ── job 1：node 侧的门（语法闸 + 纯度闸 + 六套 suite + golden 对账 + 剂量表）──────
   check:
-    name: node gates (syntax + purity + five suites + golden + dose table)
+    name: node gates (syntax + purity + six suites + golden + dose table)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
           node-version: '22'
       - name: bash tools/verify.sh（腿2 根形态 / 腿3 前缀形态 / 腿4 部署名单 / 腿5 移动形态）
         env:
-          # SKIP_UNIT=1：五套 suite 已经在 job check 里数过行数了，这里重复一遍只是把
+          # SKIP_UNIT=1：六套 suite 已经在 job check 里数过行数了，这里重复一遍只是把
           # 同一条门跑两次，不会多抓住一个 bug；浏览器那四条腿才是这个 job 的存在理由。
           SKIP_UNIT: '1'
           WD_TIMEOUT: '1500'

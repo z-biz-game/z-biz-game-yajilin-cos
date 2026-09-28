@@ -238,7 +238,7 @@ quiet_leg() { # quiet_leg <腿名>：控制台里但凡有 [EXCEPTION]/[log:erro
   [ "${n:-0}" = 0 ]
 }
 
-# ── 腿 1：语法闸 + 五套 suite + golden 对账 + 剂量表 ──────────────────────────────
+# ── 腿 1：语法闸 + 六套 suite + golden 对账 + 剂量表 ──────────────────────────────
 if [ "${SKIP_UNIT:-0}" = 1 ]; then
   echo "=== 腿1 unit：SKIP_UNIT=1，跳过（浏览器那几条腿照样跑）==="
 else

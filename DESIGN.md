@@ -127,13 +127,15 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 4. **六套 suite**：rule / pencil / counter / golden-write(`--check`) / golden / generator-probe
    （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 102，红 0；
    口径提醒：`tools/check.mjs:17-24` 的 `SUITES` 数组与 `tools/verify.sh:265` 的 `need` 列表都是六条，
-   `tools/verify.sh:245` 那行 echo 也念「六套」；而 `tools/verify.sh:241`、`.github/workflows/ci.yml:13`、
-   `.github/workflows/ci.yml:15`、`.github/workflows/ci.yml:104` 这四行**注释**仍写着「五套 / five suites」。
+   `tools/verify.sh:245` 那行 echo 也念「六套」。
+   曾经有四行**注释**写着「五套 / five suites」（`tools/verify.sh:241`、`.github/workflows/ci.yml:13`、
+   `:15`、`:104`），本轮逐行改成「六套 / six suites」，行数一根没动，所以上面那些行号引用照旧有效。
    核对过历史：这四行不是后来漂走的——引入六条 `SUITES` 的那颗提交（`65602f7`）里，
    `ci.yml` 就已经写着「five suites」，`verify.sh` 晚些写成时又抄了同一句旧话（`git show 65602f7:tools/check.mjs`
    的 `SUITES` 已是六条，`git show 65602f7:.github/workflows/ci.yml` 第 14 行是 five suites）。
-   判据本身（数组、`need` 列表、行数等式）从没变少，错的只是注释。本轮以实跑的 7 行 RESULT（六套 + 聚合）为准；
-   注释与判据不符这件事已单独上报，没有为了让文档好看去动它。
+   值得记下来的区别是：判据本身（数组、`need` 列表、`got.length === SUITES.length` 那条等式）
+   从头到尾没变少过，坏的只是注释——所以这一处不是「门松了」，是「门上贴的标签错了」。
+   本轮以实跑的 7 行 RESULT（六套 + 聚合）为准。
 5. **数 RESULT 行数**：每套自己那行 `RESULT <name> ok=… checks=… fails=…` 原样再念一遍
    （`tools/check.mjs:118-122`），并且 `got.length === SUITES.length`（`tools/check.mjs:124`）。
    为什么行数要单独数：`tools/check.mjs:8-9`——套件被改名、被漏跑、spawn 失败但退出码没传上来，
@@ -321,3 +323,10 @@ seed（`js/main.js:26-28`、`js/main.js:254-264`），全失败就把 `NO_BOARD`
   真部署过的那份字节，本地那棵替身根替代不了这一条。
 - **最坏情况**：本轮 64 张出货盘 0 次「60 试全废」只说明这一批没撞封顶，
   不构造成「最坏 1.2 秒」这种承诺。
+- **源码注释里的仓外路径**：`js/engine/*.js` 的注释里有 8 处 `_tmp-yajilin-*.mjs:行号`，另有
+  `js/engine/grid.js:4` 提到「需求卡」。这些指的是**桌面筛选期的探针**和这一仓的立项卡，两者都
+  没随仓发布（探针留在工作区根，且被 `.gitignore:8` 的 `_tmp-*` 规则挡在门外）。所以它们是
+  **溯源记录**，不是 clone 之后点得开的链接——Clone 出来的仓里读不到，也不该读到。
+  反过来，本仓自己那条规矩只约束文档：README/DESIGN 里每一处 `文件:行号` 都指本仓的文件，
+  本轮用 `_tmp-cite-check.mjs`（仓外探针，同上）对两份文档逐条解析过：230 处引用，
+  文件不存在的 0 处、行号越界的 0 处。

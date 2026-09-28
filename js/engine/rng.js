@@ -1,5 +1,5 @@
 // 随机数：32 位 FNV 哈希 + mulberry32。**从模型里搬出来的**，原来住在
-// _tmp-yajilin-model.mjs:15-27，逐字符照搬（hashSeed 用 codePointAt，不是 charCodeAt——
+// 桌面筛探针 `_tmp-yajilin-model.mjs:15-27`（仓外，见 DESIGN §八 末条），逐字符照搬（hashSeed 用 codePointAt，不是 charCodeAt——
 // 换成 charCodeAt 会改哈希值，于是改所有 seed 画出的盘，剂量表就再也对不上了）。
 //
 // 本仓的随机数只有这一个入口，而且引擎里只许用它：
