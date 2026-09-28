@@ -103,17 +103,18 @@ export class BoardView {
   // 箭头格：瓦片上一个**必定是瓦片色**的点（斜角，避开居中的数字与沿轴的箭头）。
   clueTilePoint(cell) {
     const r = this.cellRect(cell);
-    return { x: r.cx + r.size * 0.33, y: r.cy + r.size * 0.33 };
+    return { x: r.cx + r.size * Board.clueTileSample, y: r.cy + r.size * Board.clueTileSample };
   }
 
-  // 箭头那一笔的中点：沿引擎给的 dir 从格心伸出 0.32 格。方向画反了，这个点就读瓦片色。
+  // 箭头那一笔上的一点：沿引擎给的 dir 从格心伸出 Board.clueArrowSample 格。
+  // 这个数必须落在 draw 画的那个三角形里（尖 0.42 / 底 0.28），方向画反了这个点就读瓦片色。
   clueArrowPoint(cell) {
     const g = this.game;
     const cl = g.clueAt(cell);
     if (!cl) return null;
     const k = this.geo.cell;
     const c = this.centerOf(cell);
-    const off = k * 0.32;
+    const off = k * Board.clueArrowSample;
     if (cl.dir === UP) return { x: c.x, y: c.y - off };
     if (cl.dir === DOWN) return { x: c.x, y: c.y + off };
     if (cl.dir === LEFT) return { x: c.x - off, y: c.y };
@@ -121,11 +122,21 @@ export class BoardView {
   }
 
   // 度数异常那一格的错误圈上的一点（45°，避开设在格心的黑格方块与沿轴的环线）。
+  // 半径取 Board.badRingRadius（draw 画的圈用的就是这一个数）；铅笔方块的角在 pencilArm×√2，
+  // 两者压在一起，所以 badRing 与 pencilMark 必须是**同一点位也分得开**的两种色（theme.js 的色组纪律）。
   ringPoint(cell) {
     const { cell: k } = this.geo;
     const c = this.centerOf(cell);
-    const r = k * 0.42 * Math.SQRT1_2;
+    const r = k * Board.badRingRadius * Math.SQRT1_2;
     return { x: c.x + r, y: c.y + r };
+  }
+
+  // 黑格方块的描边点（沿竖直轴、方块上边界）。draw 用的 inset 就是 Board.blackInset，
+  // 门禁按这里给的点取色，不许在测试里再算一遍 inset——那也是「画法改了、断言还在旧位置绿着」的门。
+  blackFacePoint(cell) {
+    const c = this.centerOf(cell);
+    const k = this.geo.cell;
+    return { x: c.x, y: c.y - k * (0.5 - Board.blackInset) };
   }
 
   // 铅笔结论的记号点：黑格 = 方块描边上的点，环段 = 圆圈描边上的点。两处都是描边，
@@ -200,6 +211,28 @@ export class BoardView {
     roundRect(ctx, bx, by, k * game.w + k, k * game.h + k, Radius.cell);
     ctx.fillStyle = Palette.field;
     ctx.fill();
+
+    // 1b) 格线：只画在格的边界上，也就是「相邻两格中心的中点」正下方。
+    // colorOfEdge 说「没落笔的边读 gridLine」、theme.js 说取样点纪律靠这条线，那就必须真的画出来：
+    // 以前这里只有承诺没有笔画，未落笔的边中点量到的是 field——一条注释与画面分家的断言。
+    ctx.save();
+    roundRect(ctx, bx, by, k * game.w + k, k * game.h + k, Radius.cell);
+    ctx.clip();
+    ctx.strokeStyle = Palette.gridLine;
+    ctx.lineWidth = Math.max(1.5, k * Board.gridWidth);
+    ctx.beginPath();
+    for (let c = 1; c < game.w; c++) {
+      const px = geo.x + c * k;
+      ctx.moveTo(px, by);
+      ctx.lineTo(px, by + k * game.h + k);
+    }
+    for (let r = 1; r < game.h; r++) {
+      const py = geo.y + r * k;
+      ctx.moveTo(bx, py);
+      ctx.lineTo(bx + k * game.w + k, py);
+    }
+    ctx.stroke();
+    ctx.restore();
 
     // 2) 黑格（玩家涂的，含铅笔替玩家涂的那些——填充都是黑格色，铅笔的再加一圈描边）
     const inset = k * Board.blackInset;
@@ -300,12 +333,12 @@ export class BoardView {
       const c = this.centerOf(cell);
       ctx.fillStyle = Palette.errorSoft;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, k * 0.46, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, k * Board.badSoftRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = Palette.badRing;
       ctx.lineWidth = Math.max(2, k * Board.badRingWidth);
       ctx.beginPath();
-      ctx.arc(c.x, c.y, k * 0.42, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, k * Board.badRingRadius, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -323,8 +356,8 @@ export class BoardView {
       ctx.textBaseline = 'middle';
       ctx.font = `700 ${font}px ${'ui-monospace, SFMono-Regular, Menlo, monospace'}`;
       ctx.fillText(String(cl.n), c.x, c.y + font * 0.04);
-      const off = k * Board.clueArrow;
-      const ah = Math.max(3, k * 0.09);
+      const off = k * Board.clueArrowTip;
+      const ah = Math.max(4, k * Board.clueArrowHead);
       ctx.fillStyle = Palette.clueArrow;
       ctx.beginPath();
       if (cl.dir === UP) {

@@ -345,7 +345,9 @@ canvas.addEventListener('pointerdown', (ev) => {
   if (mode === 'loop') {
     // 起点那一格还没有「上一条」，所以先只把笔放下去；拖到相邻格才连边
   } else if (mode === 'black') {
-    game.setRole(cell, BLACK);
+    // 涂黑那支笔点第二下要能把它清掉：setRole(cell, BLACK) 在已经是黑格时返回 null，
+    // 于是「点错了再点一次」在盘上没有出口，玩家只能换到擦掉笔——点两下toggle 才是这支笔该有的手感。
+    game.toggleBlack(cell);
   } else if (mode === 'cut') {
     const hit = view.hitEdge(ev.clientX, ev.clientY);
     if (hit) game.setEdge(hit.cell, hit.d, E_OFF);
@@ -369,6 +371,8 @@ canvas.addEventListener('pointermove', (ev) => {
     return;
   }
   if (mode === 'black') {
+    // 拖过的那一格是「涂上」不是「翻面」：pointerdown 那一处的 toggle 已经用过了，
+    // 这里再 toggle 的话，一笔绕回同一格就会把它擦掉，涂黑笔就成了随机开关。
     game.setRole(cell, BLACK);
     drag.cells.push(cell);
     cursor = cell;
