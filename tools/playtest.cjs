@@ -1,7 +1,7 @@
 // Minimal CDP driver for headless playtesting (Node 22+ global WebSocket/fetch).
 //
 // env: CDP_PORT (devtools port, default 9378), BASE_URL (page URL, default
-//      http://127.0.0.1:5326/)
+//      http://127.0.0.1:5326/), MOBILE=1 (+ MOBILE_W/MOBILE_H/MOBILE_DPR)
 //
 //   node tools/playtest.cjs open <url>          fresh tab at <url>, prints boot logs
 //   node tools/playtest.cjs eval '<expr>'       evaluate, await promises, print result
@@ -9,6 +9,12 @@
 //   node tools/playtest.cjs scenario <name>     inject tools/scenarios.js, run __ng.<name>()
 //   node tools/playtest.cjs shot <file.png>
 //   node tools/playtest.cjs logs
+//
+// MOBILE=1 的下法只有一种：**在本会话 attach 之后、导航之前**发
+// Emulation.setDeviceMetricsOverride / setTouchEmulationEnabled，并且发完就把它自己读回的
+// innerWidth/devicePixelRatio 打到 stderr（EMULATION 那行）。
+// ⚠ 另起一个进程/另一个 tab 去设覆写，然后在这个会话里跑断言，读到的是桌面的形状：
+// 那条「移动腿」就退化成桌面断言重跑一遍的假绿。覆写是 per-session 的，腿也必须是这样。
 //
 // Which page to attach to is decided by BASE_URL's **origin**, never by a hard-coded port:
 // 一个悄悄落在 about:blank 上的 eval 读起来像是部署坏了，其实是门禁在给错的 DOM 打分。
@@ -26,6 +32,10 @@ const path = require('path');
 const PORT = Number(process.env.CDP_PORT || 9378);
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:5326/';
 const ORIGIN = new URL(BASE).origin;
+const MOBILE = process.env.MOBILE === '1';
+const MW = Number(process.env.MOBILE_W || 390);
+const MH = Number(process.env.MOBILE_H || 844);
+const MDPR = Number(process.env.MOBILE_DPR || 3);
 const cmd = process.argv[2];
 const arg = process.argv[3];
 const rest = process.argv[4];
@@ -129,6 +139,23 @@ async function main() {
     }
     return r.result.value;
   };
+
+  // 覆写与「它真的生效了」的读数必须在同一个 sessionId 上、在同一段代码里：
+  // 设完不自证，桌面腿和移动腿就会跑出一样的数字而谁都发现不了。
+  if (MOBILE) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: MW, height: MH, deviceScaleFactor: MDPR, mobile: true }, sessionId);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId);
+    await cdp.send('Emulation.setUserAgentOverride', {
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      platform: 'iPhone',
+    }, sessionId);
+    const witness = await evaluate('JSON.stringify([innerWidth,innerHeight,devicePixelRatio,Math.round(visualViewport.width),navigator.maxTouchPoints,("ontouchstart" in window)])');
+    console.error(`EMULATION set-in-session sessionId=${sessionId} want=${MW}x${MH}@${MDPR} page-back=${witness}`);
+  } else {
+    // 桌面腿也要自证「这一趟没有被上一趟的移动覆写留下东西」：覆写是 per-session 的，
+    // 新进程新 session 本就不该有，读回 innerWidth 就是把这句写死的话变成一次实测。
+    console.error('EMULATION desktop-session');
+  }
 
   const navigate = async (url) => {
     await cdp.send('Page.navigate', { url }, sessionId);

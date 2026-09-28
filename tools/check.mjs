@@ -69,6 +69,39 @@ for (const f of engineFiles) {
 // 浏览器侧的入口在轮 2 才建，这一轮只保证引擎干净
 console.log(`禁词门：${engineFiles.length} 个引擎文件 × ${FORBID.length} 个禁词，注释外零命中`);
 
+/* ---------- 2b) 默认 seed 的来源：mintSeed 体内零时间 ----------
+ * 「默认种子不按日期算」这句话有两种证法。跑一遍看 seed 长什么样是错的证法：同一天里连铸两颗
+ * 也会因为计数器自增而各不相同，日期当 seed 的话反而看不出来。所以这里读源码：
+ * mintSeed 的函数体里只许出现 crypto.getRandomValues 与 seedCounter++，
+ * 出现 Date / performance.now / Math.random 任意一个就直接红——那才是「按日期算」的写法。
+ */
+{
+  const main = readFileSync(join(ROOT, 'js', 'main.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const st = main.indexOf('function mintSeed() {');
+  ok(st >= 0, 'js/main.js 里找不到 function mintSeed()——换一局的 seed 是从哪儿来的？');
+  const body = st >= 0 ? main.slice(st, main.indexOf('\n}', st) + 2) : '';
+  ok(/crypto\.getRandomValues/.test(body), `mintSeed 体内没有 crypto.getRandomValues：${body.slice(0, 200)}`);
+  ok(/seedCounter\+\+|seedCounter \+= 1|seedCounter = seedCounter \+ 1/.test(body),
+    `mintSeed 体内没有 seedCounter 自增（换一局就不是 seed+k 的自增）：${body.slice(0, 240)}`);
+  for (const [name, re] of FORBID.filter(([, r]) => /Date|performance|Math\.random/.test(r.source))) {
+    ok(!re.test(body), `mintSeed 体内出现「${name}」：默认 seed 就成了按日期算的那种`);
+  }
+  // seedCounter 的初值也不能是时间（`let seedCounter = Date.now()` 一样是把一天当 seed）
+  const init = /(let|var|const)\s+seedCounter\s*=\s*([^;\n]+)/.exec(main);
+  ok(!!init, '找不到 seedCounter 的初值声明');
+  if (init) {
+    for (const [name, re] of FORBID.filter(([, r]) => /Date|performance|Math\.random/.test(r.source))) {
+      ok(!re.test(init[2]), `seedCounter 初值出现「${name}」：${init[2]}`);
+    }
+  }
+  // 换一局这条按钮路径必须真的过 mintSeed（而不是自己现拼一个 seed，更不是拿 Date 现拼）
+  const btnNew = /['"]btn-new['"]\)\.addEventListener\([\s\S]{0,120}?\(\)\s*=>\s*newGame\(\s*\{\s*\}\s*\)/.exec(main);
+  ok(!!btnNew, "找不到 $('btn-new').addEventListener(…) → newGame({}) 那条路（换一局不经过 mintSeed？）");
+  ok(/btn-again['"]\)\.addEventListener\([\s\S]{0,120}?\(\)\s*=>\s*newGame\(\s*\{\s*\}\s*\)/.test(main),
+    "找不到 $('btn-again') → newGame({})：胜利卡片里那颗「再来一局」也得走同一个 mintSeed");
+  console.log(`seed 门：mintSeed 体内 ${body.split('\n').length} 行，零时间源；初值="${init ? init[2].trim() : '?'}"`);
+}
+
 /* ---------- 3) 逻辑套件 ---------- */
 const got = [];
 for (const [name, args] of SUITES) {
@@ -82,7 +115,11 @@ for (const [name, args] of SUITES) {
   ok(m[1] === name, `${name}: RESULT 自称 ${m[1]}，与套件名不符`);
   ok(m[2] === 'true' && Number(m[4]) === 0 && r.status === 0, `${name}: ok=${m[2]} fails=${m[4]} 退出码=${r.status}\n${out.split('\n').filter((l) => l.startsWith('FAIL')).slice(0, 8).join('\n')}`);
   ok(Number(m[3]) > 0, `${name}: checks=0，等于没断言`);
-  console.log(`  ${name.padEnd(20)} checks=${m[3].padEnd(5)} fails=${m[4]} ｜ ${out.split('\n').filter((l) => /墙钟|load1|出货|loadavg/.test(l)).slice(0, 2).join(' ').slice(0, 90)}`);
+  // 把每套自己的 RESULT 行**原样**再念一遍：ci.yml 与 tools/verify.sh 数的就是这些行
+  // （统一格式 RESULT <name> ok=… checks=… fails=…）。只报一条聚合行的话，「少跑了一套」
+  // 在门禁那一侧读不出来——它看到的永远是 1 行绿。
+  console.log('  ' + name.padEnd(20) + ' ｜ ' + out.split('\n').filter((l) => /墙钟|load1|出货|loadavg/.test(l)).slice(0, 2).join(' ').slice(0, 90));
+  console.log(line);
 }
 ok(got.length === SUITES.length, `只收到 ${got.length}/${SUITES.length} 套 RESULT：${got.join(' ')}`);
 
