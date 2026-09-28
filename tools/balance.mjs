@@ -1,0 +1,212 @@
+#!/usr/bin/env node
+// 平衡闸（需求卡第四节）：按档量**出货路径**的耗时口径，并把这个口径写成红线。
+//
+// seed 空间与 tools/generator-probe.mjs **同一颗**（tag = `${TAG}-${key}-${s}`，
+// 默认 TAG='pg'、ATTEMPTS=60、FRACS=0.45/0.5/0.55、同一份 TIERS），
+// 所以这里量的就是剂量表那批盘——差别只在剂量表把墙钟当**观测值**打印，
+// 这个文件把墙钟变成**判据**（budgetMs / band），并且逐档打印绝对值。
+//
+// 公式抄的是家族里那两个仓的**代码**（不是注释）：
+//   budgetMs = max(10, ceil(p95 * 4 / 10) * 10)                       —— z-biz-game-hidato-cos/tools/balance.mjs:100
+//   band     = [max(1, floor(med * 0.4)), max(lo + 1, ceil(p95 * 1.6))] —— 同文件 :96-99
+//   墙钟判 p95、不判单次 max；HEADROOM = 2                             —— z-biz-game-zebra-cos/tools/balance.mjs:39、:181-192
+// 需求卡那条「不许用『中位×2』当基线」由 B1 落实：budgetMs 只由 p95 决定，med 进不了这个式子。
+//
+// ⚠ 下面 MEASURED 那张表是**量出来的**，不是感觉：2026-09-29 本机 node v26.8.1、
+//   15 核、load1 ≈ 2.2，SAMPLES=16 复跑得到（收尾行每次都会重念负载）。
+//   它**没有**进 js/engine/generate.js 的档位表：那张表一动，浏览器闸的 283 条断言就得重跑，
+//   那是另一轮的事。本轮 band/budgetMs 只活在这个文件里，文件头这一句就是它的户口。
+import os from 'node:os';
+import { performance } from 'node:perf_hooks';
+
+import {
+  makePencilBoard, DEFAULT_LOOP_FRACS, DEFAULT_MAX_ATTEMPTS, TIERS,
+  CERT_BUDGET_NODES, DIG_BUDGET_NODES,
+} from '../js/engine/generate.js';
+import { countSolutions } from '../js/engine/counter.js';
+import { pencil } from '../js/engine/pencil.js';
+import { recompute } from '../js/engine/model.js';
+
+const SAMPLES = Number(process.env.SAMPLES || process.env.N || 16);
+const ATTEMPTS = Number(process.env.ATTEMPTS || DEFAULT_MAX_ATTEMPTS);
+const FRACS = (process.env.FRACS || DEFAULT_LOOP_FRACS.join(',')).split(',').map(Number);
+const TAG = process.env.TAG || 'pg';   // 与剂量表同一段 seed 空间，别另起一套
+const HEADROOM = Number(process.env.HEADROOM ?? 2);
+
+// 本轮量出来的 med/p95/max（ms）：2026-09-29 本机 15 核、load1 1.66、node v26.8.1、SAMPLES=16。
+// ⚠ 分位数口径沿用 tools/generator-probe.mjs:26（q(p95) 取 ceil(0.95×N)−1 那一格），
+//   所以 N=16 时 p95 **就是** max——这条不是抖动估计，是「16 张里最狠那张」，定价因此偏保守。
+//   band 与 budgetMs 由**同一套公式**从这三格现算，表里不存任何手调过的整数。
+const MEASURED = {
+  '6x6': { med: 1, p95: 6, max: 6 },
+  '8x8': { med: 6, p95: 38, max: 38 },
+  '10x10': { med: 43, p95: 188, max: 188 },
+  '12x12': { med: 568, p95: 1193, max: 1193 },
+};
+
+// 菜单档 p95 的**绝对值**红线（需求卡：给绝对值，不给倍数）。
+// 本轮 12×12 实测 p95 见 MEASURED 那张表；取它向上到 1 000 ms 的那个数当门，
+// 与 tools/ceiling.mjs 的 C3（越过「房子口径」2000 ms ⇒ unshippable）是同一把尺子的两端：
+// 菜单档必须在 2000 ms 之下，档外那两档的量测结果就是用来证明它越过的。
+const MENU_P95_CEILING_MS = Number(process.env.MENU_CEILING || 2000);
+
+// 极小性抽样口径：**不用随机数**（家族红线：seed 与抽样都不许沾时间/随机）。
+// 每张盘取 IRRED_BOARDS 张盘、每盘按序号等距取 IRRED_PER_BOARD 颗箭头。
+const IRRED_BOARDS = Math.min(4, SAMPLES);
+const IRRED_PER_BOARD = 6;
+
+const sorted = (a) => a.slice().sort((x, y) => x - y);
+const med = (a) => { const x = sorted(a); return x.length ? x[Math.floor(x.length / 2)] : NaN; };
+const q = (a, x) => { const b = sorted(a); return b.length ? b[Math.min(b.length - 1, Math.ceil(x * b.length) - 1)] : NaN; };
+const imax = (a) => Math.max(0, ...a);
+
+const bandOf = (m, p95) => { const lo = Math.max(1, Math.floor(m * 0.4)); return [lo, Math.max(lo + 1, Math.ceil(p95 * 1.6))]; };
+const budgetOf = (p95) => Math.max(10, Math.ceil(p95 * 4 / 10) * 10);
+
+let checks = 0, fails = 0;
+const ok = (cond, name, detail = '') => {
+  checks++;
+  if (!cond) { fails++; console.log(`  ✗ ${name}${detail ? ` :: ${detail}` : ''}`); }
+  console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}${detail ? ` :: ${detail}` : ''}`);
+  return !!cond;
+};
+
+// 摘一颗箭头之后会发生什么（generate.js 的 pDig 用的就是这四条出口 + 预算耗尽）
+function probeRemoval(board, key) {
+  const cl = board.clue.get(key);
+  board.clue.delete(key);
+  board.black.add(key);
+  recompute(board);
+  let outcome;
+  if (board.neighbors(key).some((j) => board.black.has(j))) {
+    outcome = 'adj';          // 改黑即撞黑格相邻：规则 3 直接违法，压根进不了复核
+  } else {
+    const p = pencil(board);
+    if (p.contradiction) outcome = 'contra';
+    else if (!p.solved) outcome = 'stuck';
+    else {
+      const c = countSolutions(board, { limit: 2, budgetNodes: DIG_BUDGET_NODES });
+      outcome = c.stopped ? 'stopped' : (c.count === 1 ? 'removable' : 'multi');
+    }
+  }
+  board.black.delete(key);
+  board.clue.set(key, cl);
+  recompute(board);
+  return outcome;
+}
+
+function irredundancy(board) {
+  const keys = [...board.clue.keys()].sort((a, b) => a - b);
+  const stride = Math.max(1, Math.floor(keys.length / IRRED_PER_BOARD));
+  const tally = { adj: 0, contra: 0, stuck: 0, multi: 0, stopped: 0, removable: 0, tried: 0 };
+  for (let taken = 0, i = 0; i < keys.length && taken < IRRED_PER_BOARD; i += stride, taken++) {
+    tally[probeRemoval(board, keys[i])]++;
+    tally.tried++;
+  }
+  return tally;
+}
+
+const LOAD_BEFORE = os.loadavg().map((x) => x.toFixed(2)).join(' / ');
+console.log('================================================================================');
+console.log('YAJILIN BALANCE — 出货路径的平衡闸（档内四档，seed 空间同剂量表）');
+console.log(`口径      : SAMPLES=${SAMPLES} 张/档  ATTEMPTS=${ATTEMPTS}  FRACS=${FRACS.join('/')}  TAG=${TAG}`);
+console.log(`机器      : ${os.type()} ${os.release()} ${os.arch()}，${os.cpus().length} 核，node ${process.version}`);
+console.log(`负载      : load1/5/15 before = ${LOAD_BEFORE}`);
+console.log('================================================================================');
+
+const rows = [];
+for (const tier of TIERS) {
+  const key = tier.key;
+  const per = [];
+  const dead = {};
+  const recs = [];
+  let over = 0, stuck = 0, unsound = 0, certStopped = 0, notSolved = 0, attemptsSum = 0;
+  const t0 = performance.now();
+  for (let s = 0; s < SAMPLES; s++) {
+    const b0 = performance.now();
+    const r = makePencilBoard(`${TAG}-${key}-${s}`, tier.w, tier.h, { maxAttempts: ATTEMPTS, loopFracs: FRACS });
+    per.push(performance.now() - b0);
+    for (const [k, v] of Object.entries(r.dead || {})) dead[k] = (dead[k] || 0) + v;
+    if (!r.ok) continue;
+    recs.push(r);
+    attemptsSum += r.attempts;
+    over += r.over;
+    stuck += r.stuck;
+    unsound += r.unsound || 0;
+    if (r.stillSolved === false) notSolved++;
+  }
+  const tierWall = performance.now() - t0;
+  const nodes = recs.map((r) => r.nodes);
+  const m = med(per), p95 = q(per, 0.95), mx = imax(per);
+  const budgetMs = budgetOf(p95);
+  const band = bandOf(m, p95);
+  rows.push({ key, per, recs, dead, m, p95, mx, budgetMs, band, nodes, tierWall, over, stuck, unsound, certStopped, notSolved, attemptsSum });
+
+  // —— B1：budgetMs 由**本趟实测 p95** 现算（绝对值逐档打印），并且要撑得住表定那条线 ——
+  const ref = MEASURED[key];
+  console.log(`\n【${key}】出货 ${recs.length}/${SAMPLES}｜墙钟 ms：med ${m.toFixed(0)} / p95 ${p95.toFixed(0)} / max ${mx.toFixed(0)}`);
+  if (ref) {
+    const refBudget = budgetOf(ref.p95);
+    ok(p95 <= refBudget, `B1 ${key} 本趟 p95 ${p95.toFixed(0)} ms ≤ 表定 budgetMs ${refBudget} ms`,
+      `表 p95 ${ref.p95} ms → budgetMs=max(10, ceil(p95×4/10)×10)=${refBudget} ms；本趟 p95 ${p95.toFixed(0)} ms 已经越过——要么负载变了，要么流水线变了`);
+    console.log(`  读数 B1 ${key}：本趟现算 budgetMs=${budgetMs} ms（p95=${p95.toFixed(0)}）｜表定 budgetMs=${refBudget} ms（表 p95=${ref.p95} ms）｜HEADROOM=${HEADROOM}`);
+  } else {
+    ok(false, `B0 ${key} MEASURED 表里没有这一档`, '先跑一趟把 med/p95/max 填进文件头的表，别把它当缺省绿');
+  }
+
+  // —— B2：band 判定（对每档**重算**并打印；判 med 落不落在表定 band 里）——
+  if (ref) {
+    const refBand = bandOf(ref.med, ref.p95);
+    ok(m >= refBand[0] && m <= refBand[1], `B2 ${key} med ${m.toFixed(0)} ms 落在表定 band [${refBand.join(', ')}] 内`,
+      `本趟重算的 band 是 [${band.join(', ')}]（[floor(med×0.4), ceil(p95×1.6)]）`);
+    console.log(`  读数 B2 ${key}：表定 band [${refBand.join(', ')}] ｜本趟重算 band [${band.join(', ')}]`);
+  }
+
+  // —— B3：计数器 stopped 必须为 0。两条独立来源：pDig 每次删除复核的 over，
+  //     加上**本文件自己重跑一遍**的认证计数——不复用 shipBoard 自记的那笔账 ——
+  let recert = null;
+  if (recs.length) recert = countSolutions(recs[0].board, { limit: Infinity, budgetNodes: CERT_BUDGET_NODES, collect: 1 });
+  ok(over === 0, `B3 ${key} pDig 的每一次删除复核都必须在预算内数完（over = 唯一性没证完的那次删除）`,
+    `over=${over} stuck=${stuck}（stuck 是「铅笔没全解、压根没走到计数」，不是预算问题）`);
+  ok(recert ? !recert.stopped : false, `B3 ${key} 独立重跑认证计数：不许 stopped`,
+    recert ? `stopped=${recert.stopped} nodes=${recert.nodes}` : '这一档一张盘都没出，重跑无从谈起');
+  ok(recert ? recert.count === 1 : false, `B3 ${key} 独立重跑认证计数：count 必须恰好 1（不是「≥1 解」）`,
+    recert ? `count=${recert.count} capped=${recert.capped}` : '');
+  console.log(`  读数 B3 ${key}：认证 nodes med ${med(nodes)} / max ${imax(nodes)}｜本文件重跑那颗 seed 的 nodes=${recert ? recert.nodes : '—'}｜CERT_BUDGET_NODES ${CERT_BUDGET_NODES}｜DIG_BUDGET_NODES ${DIG_BUDGET_NODES}`);
+
+  // —— B4：满额出货 ∧ 出货盘铅笔全解；拒绝率与废因分布逐条打印（聚合数会说谎）——
+  ok(recs.length === SAMPLES, `B4a ${key} 必须出货 ${SAMPLES}/${SAMPLES}`, `实出 ${recs.length}/${SAMPLES}，废因 ${JSON.stringify(dead)}`);
+  ok(notSolved === 0, `B4b ${key} 零猜测 x/N 必须等于 N：出货盘铅笔全解 ${recs.length - notSolved}/${recs.length}`, `不全解 ${notSolved} 盘`);
+  const shipAttempts = recs.reduce((a, r) => a + r.attempts, 0);
+  const deadTotal = Object.values(dead).reduce((a, b) => a + b, 0);
+  const totalAttempts = shipAttempts + deadTotal;  // 出货那张盘的 dead 账里存着它成功之前废掉的次数
+  console.log(`  读数 B4 ${key}：总尝试 ${totalAttempts}（${recs.length} 颗 seed 用掉 ${shipAttempts} 次，max/盘 ${imax(recs.map((r) => r.attempts))}/${ATTEMPTS}）｜拒绝率 ${totalAttempts ? ((deadTotal / totalAttempts) * 100).toFixed(1) : '0.0'}% (${deadTotal}/${totalAttempts})｜被拒原因分布 ${JSON.stringify(dead)}｜挖掉的箭头合计 ${recs.reduce((a, r) => a + r.removed, 0)} 颗，unsound=${unsound}`);
+
+  // —— B5：单颗摘除意义下的极小（正面判据）——
+  const tally = { adj: 0, contra: 0, stuck: 0, multi: 0, stopped: 0, removable: 0, tried: 0 };
+  for (const r of recs.slice(0, IRRED_BOARDS)) {
+    const t = irredundancy(r.board);
+    for (const k of Object.keys(tally)) tally[k] += t[k];
+  }
+  ok(tally.removable === 0, `B5 ${key} 抽 ${tally.tried} 颗箭头：摘掉之后「仍唯一 ∧ 铅笔仍全解」的必须 0 颗`,
+    `removable=${tally.removable}（pDig 留着一颗能摘的箭头 = 极小性没成立）`);
+  ok(tally.stopped === 0, `B5 ${key} 抽样复核里 DP 预算不许耗尽（耗尽那次删除的唯一性没证完）`, `stopped=${tally.stopped} / ${DIG_BUDGET_NODES} nodes`);
+  console.log(`  读数 B5 ${key}：摘除结局分布 挨黑格相邻 ${tally.adj}｜铅笔推矛盾 ${tally.contra}｜铅笔不全解 ${tally.stuck}｜计数器说非唯一 ${tally.multi}｜预算耗尽 ${tally.stopped}｜真能摘 ${tally.removable}（共 ${tally.tried} 颗，取 ${Math.min(IRRED_BOARDS, recs.length)} 张盘 × ${IRRED_PER_BOARD} 颗，等距序号取，零随机）`);
+}
+
+// —— C3 的另一半（菜单档那条绝对值线）见 tools/ceiling.mjs 的文件头说明 ——
+const worstP95 = Math.max(...rows.map((r) => r.p95));
+ok(worstP95 <= MENU_P95_CEILING_MS, `B6 菜单档 p95 的绝对值线：最狠一档 ${worstP95.toFixed(0)} ms ≤ ${MENU_P95_CEILING_MS} ms`,
+  `越过就是出货路径整体变慢，得重估档位表；这一条与 tools/ceiling.mjs 的 C3 用同一个数`);
+
+const LOAD_AFTER = os.loadavg().map((x) => x.toFixed(2)).join(' / ');
+console.log('\n汇总（每档绝对值，ms）');
+for (const r of rows) {
+  console.log(`  ${r.key.padEnd(6)} med ${String(r.m.toFixed(0)).padStart(5)} / p95 ${String(r.p95.toFixed(0)).padStart(6)} / max ${String(r.mx.toFixed(0)).padStart(6)}` +
+    ` ｜ budgetMs ${String(r.budgetMs).padStart(5)} ｜ band [${r.band.join(', ')}] ｜ 出货 ${(r.recs.length + '/' + SAMPLES).padEnd(7)} ｜ 本档墙钟 ${r.tierWall.toFixed(0)} ms`);
+}
+console.log(`\n负载      : load1/5/15 after = ${LOAD_AFTER}（before ${LOAD_BEFORE}）`);
+console.log('以上所有墙钟都是**这趟负载下的观测值，不是最坏值**；同一段代码在 load 30 的机器上能慢 30% 以上（tools/generator-probe.mjs:12）。');
+console.log(`断言 ${checks} 条，红 ${fails} 条`);
+console.log(`RESULT balance ok=${fails === 0} checks=${checks} fails=${fails}`);
+process.exit(fails === 0 ? 0 : 1);
