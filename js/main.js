@@ -203,10 +203,12 @@ function hint() {
   }
   if (out.kind === 'conflict') {
     // 玩家在这一处已经写了相反的一态：铅笔不肯再往前推。该撤哪一笔是玩家自己的判断。
-    hintNote = `盘上自己打脸了（${out.ev.rule}）：铅笔要说的那一条，你已经写成了相反的一态。提示这一步什么都不画 —— 先撤掉那笔再说。`;
+    // ⚠ Game.hint() 在冲突时返回的是 {kind, nx}（没有 ev 这一层），那句话要从 nx.ev 里取；
+    //   写 out.ev.rule 会在按提示的那一刻直接抛 TypeError——浏览器闸的 hint 场就是打这一条的。
+    hintNote = `盘上自己打脸了（${out.nx.ev.rule}）：铅笔要说的那一条，你已经写成了相反的一态。提示这一步什么都不画 —— 先撤掉那笔再说。`;
     noteMoves = mv;
     render();
-    return { kind: 'conflict', ev: out.ev, moved: false };
+    return { kind: 'conflict', ev: out.nx.ev, moved: false };
   }
   if (out.kind === 'noop') {
     hintNote = `提示这次没落下去：引擎给的第 ${out.nx.index} 条结论，Game 拒收（出盘或已经这样了）。再按一次。`;
