@@ -1,10 +1,13 @@
 name: Deploy to GitHub Pages
 
-# ⚠ 这一轮**没有启用 Pages**（需求卡第七节：轮 1 只有引擎与门禁；壳与站点是轮 2/3 的活）。
-# 所以触发器只留 workflow_dispatch：push 到 main 不会建房、也不会因为「index.html 还不存在」而红。
-# 轮 2 落地 index.html + css/ + js/main.js 时，把 `push: branches: [main]` 加回来，
-# 并把 tools/verify.sh 的浏览器闸接进 ci.yml（两种 URL 形态都要跑，Pages 的形态是 /<repo>/）。
+# 触发器：push 到 main 就建房。壳已经落地（index.html + css/ + js/ 从 d535b11 起就在树里），
+# 所以这一条不再是「等轮 2」的占位工作流。
+# ⚠ 它部署的是**当前 main 的字节**，浏览器闸读的是**当前工作区的字节**。两者之间唯一的桥是
+# ci.yml 里那两个 job；Pages 自己不重跑测试，所以 CI 红着推上来的 main 也会被发出去——
+# 要「CI 绿了才发」就给仓库加分支保护，或给 deploy job 加 needs。
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -35,11 +38,17 @@ jobs:
       # marketplace while the run still reports green.
       - name: Assemble static site
         run: |
-          test -f index.html || { echo 'index.html 还没落地（轮 2 的活）——这条工作流此刻不该被手动跑'; exit 1; }
+          set -eo pipefail
+          test -f index.html || { echo '::error::index.html 不在树里——这份名单就没有东西可发'; exit 1; }
           mkdir _site
           cp index.html _site/
           cp -r css js _site/
-          if [ -d _site/tools ]; then echo 'tools/ 混进了产物'; exit 1; fi
+          # 名单就是产物边界，所以这里按**枚举**判，不按「有没有 tools/ 目录」判：
+          # 多一个 *.md、多一个 server.cjs、多一个 package.json 都是同一种事故（答案与门禁
+          # 被发到公网上），而只查 tools/ 的话它们都能混过去。
+          find _site -type f | sed 's|^_site/||' > _site.list
+          awk '{ ok = ($0 == "index.html") || ($0 ~ /^css\//) || ($0 ~ /^js\//); if (ok == 0) { print "名单外的文件进了产物: " $0; bad = 1 } } END { exit (bad == 1) ? 1 : 0 }' _site.list
+          echo "产物 $(wc -l < _site.list | tr -d ' ') 个文件：index.html + css/ + js/，没有 tools/、没有 *.md"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

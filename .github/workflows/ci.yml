@@ -10,20 +10,25 @@ permissions:
   contents: read
 
 jobs:
+  # ── job 1：node 侧的门（语法闸 + 纯度闸 + 五套 suite + golden 对账 + 剂量表）──────
   check:
-    name: engine guarantees (syntax + purity + five suites)
+    name: node gates (syntax + purity + five suites + golden + dose table)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Node 22 而不是 20：tools/playtest.cjs 用的是全局 WebSocket/fetch（21+ 才有全局 WebSocket），
+      # 浏览器闸那一个 job 与这一个 job 必须是同一个 node，否则「CI 绿的那份字节」与
+      # 「门禁读的那份字节」就不是同一台机器上的同一件事。本仓零运行时依赖，不需要 npm install。
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # No npm install: js/engine/ has zero runtime dependencies (node:fs is confined to the
       # node-side CLI harness under tools/), so pulling a package graph into CI here would only
       # add a network flake in front of a gate that reads plain ES modules.
       - name: js/ never imports tools/
         run: |
+          set -eo pipefail
           if grep -rnE "(import|export)[^;]*from '[^']*tools/" js/ ; then
             echo '::error::运行时模块（js/）去够了 tools/ —— 分层又倒了'
             exit 1
@@ -35,16 +40,109 @@ jobs:
       # code and the "shipped bundle == tested code" claim stops being checkable.
       - name: runtime bundle references nothing under tools/
         run: |
+          set -eo pipefail
           if grep -rnE "tools/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test)" js/ index.html 2>/dev/null ; then
             echo '::error::运行时/页面代码引用了 tools/ —— Pages 产物里不会有这些文件'
             exit 1
           fi
 
-      # The real gate. tools/check.mjs runs, in order: `node --check` over every source file; the
-      # forbidden-token grep over js/engine/ (process.env / Math.random / Date.now /
-      # performance.now / require / node: imports — seed determinism and the "no clock, no die"
-      # invariant are read from source, not inferred from a green run); then rule-test, pencil-test,
-      # counter-test, `write-golden --check`, golden-test and the generator dose table, asserting
-      # each one's own `RESULT <suite> ok=true` line and that all six arrived.
+      # The real node-side gate. tools/check.mjs runs, in order: `node --check` over every source
+      # file; the forbidden-token grep over js/engine/ (process.env / Math.random / Date.now /
+      # performance.now / require / node: imports); the seed-source gate over mintSeed's body in
+      # js/main.js (默认 seed 不许按日期算——这条只能读源码，跑一遍看不出日期 seed)；
+      # then rule-test, pencil-test, counter-test, `write-golden --check`, golden-test and the
+      # generator dose table, asserting each one's own `RESULT <suite> ok=true` line.
       - name: node tools/check.mjs
-        run: node tools/check.mjs
+        run: |
+          # set -eo pipefail 是本步骤自己的命门：`node tools/check.mjs | tee` 取的是 tee 的
+          # 退出码，套件全红也会一路往下跑，最后报 green。tee 只是留一份日志给下一步数行用。
+          set -eo pipefail
+          node tools/check.mjs | tee check.log
+
+      # 数行这一步是**独立**的：check.mjs 内部也断言「六套 RESULT 全到」，但那是被测者自己数的。
+      # 崩在 spawn 之前、RESULT 行的格式改了、套件被改名——这三种都表现为「绿了但少跑了一套」，
+      # 由这里按统一的 RESULT <name> ok=… checks=… fails=… 格式再数一遍。
+      - name: count the verdict lines (六套 + 聚合 = 7 行，缺行即红)
+        run: |
+          set -eo pipefail
+          python3 - <<'PY'
+          import re, sys
+          rows = []
+          for line in open('check.log', encoding='utf-8'):
+              m = re.match(r'RESULT (\S+) ok=(\w+) checks=(\d+) fails=(\d+)', line.strip())
+              if m:
+                  rows.append(m.groups())
+          names = [r[0] for r in rows]
+          need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe', 'check']
+          print('收到 %d 行 RESULT：%s' % (len(rows), ' '.join(names)))
+          bad = [n for n in need if n not in names]
+          for n, okv, c, f in rows:
+              if okv != 'true' or int(f) != 0 or int(c) <= 0:
+                  bad.append('%s: ok=%s checks=%s fails=%s' % (n, okv, c, f))
+          if len(rows) < len(need):
+              bad.append('RESULT 行数 %d < 应有 %d' % (len(rows), len(need)))
+          for b in bad:
+              print('::error::' + b)
+          sys.exit(1 if bad else 0)
+          PY
+
+  # ── job 2：浏览器闸，两种 URL 形态都跑 ────────────────────────────────────────
+  # 只测根形态是这一族门禁最贵的一次事故：兄弟仓本地全绿、Pages 上的站点 404，因为
+  # Pages 把部署目录挂在 /<仓库名>/ 下面。所以这两条腿（根 / 前缀）在 CI 里都在，
+  # 而且前缀那棵替身根是按 pages.yml 的部署名单搭的——名单外的（tools/、*.md、答案文件）
+  # 必须 404，这条断言在 verify.sh 的腿 4 里。
+  browser:
+    name: browser gate (root form + Pages prefix form + mobile form)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: bash tools/verify.sh（腿2 根形态 / 腿3 前缀形态 / 腿4 部署名单 / 腿5 移动形态）
+        env:
+          # SKIP_UNIT=1：五套 suite 已经在 job check 里数过行数了，这里重复一遍只是把
+          # 同一条门跑两次，不会多抓住一个 bug；浏览器那四条腿才是这个 job 的存在理由。
+          SKIP_UNIT: '1'
+          WD_TIMEOUT: '1500'
+        run: |
+          set -eo pipefail
+          bash tools/verify.sh | tee verify.log
+      - name: 每条腿的场景数与断言数（缺腿即红）
+        if: always()
+        run: |
+          set -eo pipefail
+          python3 - <<'PY'
+          import os, re, sys
+          log = open('verify.log', encoding='utf-8').read()
+          legs = {}
+          for m in re.finditer(r'\[(root|prefix|mobile)\] (\S+)\s+(\d+) checks, (\d+) failed', log):
+              legs.setdefault(m.group(1), []).append((m.group(2), int(m.group(3)), int(m.group(4))))
+          need = {'root': 9, 'prefix': 9, 'mobile': 3}
+          bad = []
+          for leg, want in need.items():
+              got = legs.get(leg, [])
+              print('%-7s %d 场（应有 %d），断言 %d 条，红 %d 条' % (
+                  leg, len(got), want, sum(x[1] for x in got), sum(x[2] for x in got)))
+              if len(got) != want:
+                  bad.append('%s 腿跑了 %d 场，应有 %d 场' % (leg, len(got), want))
+              for name, c, f in got:
+                  if c == 0:
+                      bad.append('%s/%s 零断言' % (leg, name))
+                  if f:
+                      bad.append('%s/%s 有 %d 条红' % (leg, name, f))
+          if 'ALL GREEN' not in log:
+              bad.append('verify.sh 没说 ALL GREEN')
+          if 'FAILURES ABOVE' in log:
+              bad.append('verify.sh 报了 FAILURES ABOVE')
+          for b in bad:
+              print('::error::' + b)
+          sys.exit(1 if bad else 0)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yajilin-shots
+          path: tools/shots/
+          if-no-files-found: error
+          retention-days: 14
