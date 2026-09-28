@@ -74,21 +74,19 @@ export function render(records) {
 }
 
 const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-const CHECK = process.argv.includes('--check');
-// golden-test 也 import 本文件拿 produceRecord/FIXES，所以 CLI 那段必须挡住：
-// 跑测试绝不该改冻结数据。
-if (!IS_MAIN) {
-  // 只导出函数，什么都不做
-}
 
-const records = FIXES.map(produceRecord);
-if (!records.length) throw new Error('golden 是空的，无从冻结');
-
-if (CHECK) {
-  if (!existsSync(TARGET)) { console.error('golden.mjs 不存在'); process.exit(1); }
+// golden-test 也 import 本文件拿 produceRecord/FIXES，所以 CLI 那段必须真的挡住。
+// 第一轮这里写成 `if (!IS_MAIN) { /* 什么都不做 */ }` —— 空块不是出口，模块被 import 时照样
+// 落到下面，而 `--check` 不在 argv ⇒ 走 else 分支 writeFileSync：测试一边判红一边把自己判红的
+// 那份快照重写回去（证据消失、工作区变脏、下一次跑「自然变绿」）。
+// 门禁没有修数据这个动作：对照就是对照（checkFrozen），冻结只能是显式命令（freeze）。
+export function checkFrozen() {
+  const records = FIXES.map(produceRecord);
+  if (!records.length) throw new Error('golden 是空的，无从冻结');
+  if (!existsSync(TARGET)) { console.error('golden.mjs 不存在'); return 1; }
   const cur = readFileSync(TARGET, 'utf8');
   const i = cur.indexOf(BEGIN), j = cur.indexOf(END);
-  if (i < 0 || j < 0) { console.error('golden.mjs 缺少 BEGIN/END 标记'); process.exit(1); }
+  if (i < 0 || j < 0) { console.error('golden.mjs 缺少 BEGIN/END 标记'); return 1; }
   const frozen = cur.slice(i, j + END.length).trim();
   const fresh = render(records).trim();
   if (frozen !== fresh) {
@@ -98,14 +96,24 @@ if (CHECK) {
       const x = JSON.stringify(a[k]), y = JSON.stringify(records[k]);
       if (x !== y) console.error(`  #${k} ${records[k] && records[k].seed}: 冻结 ${x ? x.slice(0, 160) : '—'} ≠ 现产 ${y ? y.slice(0, 160) : '—'}`);
     }
-    process.exit(1);
+    return 1;
   }
-  console.log(`RESULT golden-write ok=true checks=${records.length} fails=0（--check：冻结快照与活引擎逐字一致）`);
-} else {
+  console.log(`RESULT golden-write ok=true checks=${records.length} fails=0（--check：冻结快照与活引擎逐字一致，全程只读）`);
+  return 0;
+}
+
+export function freeze() {
+  const records = FIXES.map(produceRecord);
+  if (!records.length) throw new Error('golden 是空的，无从冻结');
   const cur = existsSync(TARGET) ? readFileSync(TARGET, 'utf8') : '';
   const i = cur.indexOf(BEGIN), j = cur.indexOf(END);
   if (i < 0 || j < 0) throw new Error('golden.mjs 缺少 BEGIN/END 标记，不肯整文件覆写');
-  writeFileSync(TARGET, cur.slice(0, i) + render(records) + '\n' + cur.slice(j + END.length));
+  // render() 以 END 标记结尾且不带换行，cur.slice(j + END.length) 的第一个字符就是 END 那行的换行。
+  // 这里原来手多加了一个 '\n' ⇒ 每冻结一次文件尾就多两行空行（跑一次就脏一次工作区）。
+  writeFileSync(TARGET, cur.slice(0, i) + render(records) + cur.slice(j + END.length));
   console.log(`已冻结 ${records.length} 条 golden 到 tools/golden.mjs`);
   for (const r of records) console.log(`  ${r.w}x${r.h} ${r.seed} fp=${r.fingerprint} clues=${r.clues.length} nodes=${r.stats.nodes} attempts=${r.stats.attempts}`);
+  return 0;
 }
+
+if (IS_MAIN) process.exitCode = process.argv.includes('--check') ? checkFrozen() : freeze();
