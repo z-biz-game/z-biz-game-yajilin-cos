@@ -5,6 +5,8 @@
   "type": "module",
   "private": false,
   "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5326",
     "test": "node tools/check.mjs",
     "check": "node tools/check.mjs",
     "rule": "node tools/rule-test.mjs",
@@ -12,7 +14,8 @@
     "counter": "node tools/counter-test.mjs",
     "golden": "node tools/golden-test.mjs",
     "freeze-golden": "node tools/write-golden.mjs",
-    "probe": "node tools/generator-probe.mjs"
+    "probe": "node tools/generator-probe.mjs",
+    "verify": "bash tools/verify.sh"
   },
   "keywords": [
     "game",
