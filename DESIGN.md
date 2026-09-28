@@ -109,7 +109,7 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 `tools/check.mjs` 的顺序是有理由的，三段依次是：
 
 1. **语法门**：`node --check` 扫 `js/` 与 `tools/` 下每个 `.js/.mjs/.cjs`
-   （`tools/check.mjs:39-46`，本轮 23 个文件）；
+   （`tools/check.mjs:39-46`，本轮 25 个文件——tools/ 下新增的 balance 与 ceiling 也在扫描范围内）；
 2. **禁词源闸**：6 个引擎文件 × 7 个禁词（`process.env` / `Math.random` / `Date.now|new Date` /
    `performance.now` / `require(` / `node:` 导入两种写法），**注释外**零命中
    （`tools/check.mjs:53-70`，本轮读成「6 个引擎文件 × 7 个禁词，注释外零命中」）；
@@ -125,12 +125,15 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 所以只能读源码（`tools/check.mjs:72-77`）。
 
 4. **六套 suite**：rule / pencil / counter / golden-write(`--check`) / golden / generator-probe
-   （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 129，红 0
+   （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 131（语法门 25 个文件），红 0
    （聚合里除了「六套齐 + 逐行格式」还有下面第 6 条那 27 项边界断言）；
    口径提醒：`tools/check.mjs:17-24` 的 `SUITES` 数组与 `tools/verify.sh:265` 的 `need` 列表都是六条，
    `tools/verify.sh:245` 那行 echo 也念「六套」。
    曾经有四行**注释**写着「五套 / five suites」（`tools/verify.sh:241`、`.github/workflows/ci.yml:13`、
-   `:15`、`:104`），本轮逐行改成「六套 / six suites」，行数一根没动，所以上面那些行号引用照旧有效。
+   `:15`、`:131`），当时逐行改成「六套 / six suites」，行数一根没动。
+   ⚠ 后来加 balance 那条 step 时**动了** `ci.yml` 的行数（148 → 175 行，插入点在原 87 行之后），
+   所以 `:13`、`:15`、`:26-42`、`:62-64`、`:65-87` 这几处照旧有效，而原 `:104`（`SKIP_UNIT` 那两行注释）
+   漂到 `:131`、原 `:111-121`（浏览器侧数场数那步）漂到 `:138-148`——本文两处都已跟着改并逐条 grep 回真名。
    核对过历史：这四行不是后来漂走的——引入六条 `SUITES` 的那颗提交（`65602f7`）里，
    `ci.yml` 就已经写着「five suites」，`verify.sh` 晚些写成时又抄了同一句旧话（`git show 65602f7:tools/check.mjs`
    的 `SUITES` 已是六条，`git show 65602f7:.github/workflows/ci.yml` 第 14 行是 five suites）。
@@ -155,6 +158,26 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
    修法是把门搬到本地（不是把 CI 那条放宽）：注释改指 DESIGN 的对应小节，
    正则与 CI 逐字一致，同样**不分注释**（grep 不知道哪段是注释，所以门也不假装知道）。
    本轮读成「边界门：13 个运行时文件 × 2 条 grep，零命中」。
+
+### CI 侧多出来的那一条：balance 是 step，不是第七套
+
+`tools/balance.mjs` 按档量出货路径的墙钟，把 `budgetMs = max(10, ceil(p95 × 4 / 10) × 10)` 与
+band `[max(1, floor(med × 0.4)), max(lo + 1, ceil(p95 × 1.6))]` **现算**出来当门判
+（B1 定价 / B2 band / B3 stopped 与 nodes / B4 满额出货与零猜测 / B5 单颗摘除极小 / B6 绝对值线，
+本轮 checks=37 fails=0）。两个式子逐字抄兄弟仓的代码，不抄注释：
+`../z-biz-game-hidato-cos/tools/balance.mjs:96-100`、`../z-biz-game-zebra-cos/tools/balance.mjs:182-186`
+（那里判的是 p95，不是单次 max）。
+
+它为什么以**独立 step** 进 CI（`.github/workflows/ci.yml:89-114`）而不进 `SUITES`：
+`SUITES` 加一条就是「七套」，`tools/check.mjs:17-24` 的数组、`tools/verify.sh:265` 的 `need` 列表、
+`tools/verify.sh:245` 那行 echo、上面第 4 条整段「六套」的账、CI 里数行那份 `need`
+（`.github/workflows/ci.yml:76`）全要跟着改。这一族刚在「标签写着五套、判据跑的是六套」上红过一次
+（第 4 条记着全过程），所以本轮把改动面压成「一个 step + 一句 RESULT 判定」，六套这个数一根手指都没碰。
+收的判据只有一条：拿到 `RESULT balance` 行，且 `ok=true`、`fails=0`、`checks>0`。
+
+`tools/ceiling.mjs`（`npm run ceiling`）**不进 CI**——它是量天花板的，不是门，
+写进 CI 就变成每天重测一次结论（这条分工照 `../z-biz-game-triplets-cos/.github/workflows/ci.yml:52-59`）。
+它量的是档外，读数是 §七 那张表的出处。
 
 ### 浏览器侧：六条腿各断言什么
 
@@ -203,7 +226,7 @@ Pages 上线的站点 404。** 原因是 Pages 把部署目录挂在 `/<仓库�
 零断言的场景直接红、场景名不在那张八场集合里红（场景表漂了或 `__ng` 少装一个都会这样）、
 `root` 与 `prefix` 两条腿**都必须含那八场**（少了就是「浏览器闸只跑了一遍却被写成两遍」）、
 总断言数 `< 60` 也红。CI 那一侧再按 `{'root': 9, 'prefix': 9, 'mobile': 3}` 数一遍场数
-（`.github/workflows/ci.yml:111-121`）。
+（`.github/workflows/ci.yml:138-148`）。
 
 还有两条容易漏的「不是断言的断言」：每条腿的控制台里但凡出现 `[EXCEPTION]` 或 `[log:error]`
 这一趟就不算干净（`tools/verify.sh:236-243`，本轮三条腿各 0 行），因为 404 与未捕获异常
@@ -295,19 +318,31 @@ P10:0 / P10:0 / P10:0 / P10:0，见 `README.md` 第三节的规则命中口径�
 
 ## 七、档外那一格：为什么菜单只到 12×12
 
-`TIERS` 到 12×12 为止（`js/engine/generate.js:35-40`）。这不是审美决定，是本轮量出来的：
-用**同一套**默认值（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`）往档外打四颗 seed——
+`TIERS` 到 12×12 为止（`js/engine/generate.js:35-40`）。这不是审美决定，是量出来的——
+而**同一批数现在由仓里的 `tools/ceiling.mjs` 复跑**（`npm run ceiling`；四颗写死的 seed
+`cl-<档>-0..3`，不由日期派生；出货默认值一字不改：`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`）。
+上一版那批数出自仓外的桌面筛探针，clone 出来重跑不了，所以下面这张表换了出处、也换了读数：
 
-| 档位 | 出货 | 逐样本墙钟 ms | 出货那些盘的 attempts | 累计废因 |
+| 档位 | 出货 | 逐样本墙钟 ms | attempts | 累计废因 |
 |---|---|---|---|---|
-| 14×14 | 3 / 4 | [633 1745 2961 3379] | [10 37 57] | PLATEAU 161 |
-| 16×16 | 1 / 4 | [4757 4957 5019 5108] | [59]（封顶 60） | PLATEAU 238 |
+| 14×14 | **0 / 4** | [3229 2983 3072 3131] | 每一颗都是 60/60（撞封顶） | PLATEAU 240 |
+| 16×16 | **0 / 4** | [4462 5283 5076 5546] | 每一颗都是 60/60（撞封顶） | PLATEAU 240 |
 
-三件事一起成立才叫「越线」：出不了货、出货的那些盘贴着封顶（16×16 那颗是 attempts 59/60）、
-墙钟已经进到秒级。**唯一废因是 PLATEAU**（`pSet` 推不到全解，`js/engine/generate.js:89`），
-不是计数器撞预算（14×14 三张的 nodes 是 1272 / 4695 / 6010，仍远小于
-`CERT_BUDGET_NODES = 5_000_000`，`js/engine/generate.js:32`）——
-所以卡住档位的仍是自由度 1 与 2，不是 DP 的成本。
+三件事一起成立才叫「越线」，本轮三件都成立、而且比上一版更硬：
+**出不了货**（上一版在同一套默认值下读成 3/4 与 1/4，换成仓内这四颗 seed 就是 0/4——
+差别在 seed 空间而不在流水线：档内四档的确定量认证 nodes 1623/4250、344/6474 在
+`tools/balance.mjs` 与剂量表两边逐字相同，可作对照）；
+**抢不到出货机会**（八颗 seed 把 60 次换盘全部撞满，上一版 16×16 那颗「attempts 59/60 贴着封顶」
+在这里变成颗颗撞封顶）；**墙钟进到秒级**（八颗全部越过房子口径 2000 ms，
+`tools/ceiling.mjs` 的 C3 就是按这两条绝对值判的，参照值是同一趟里 12×12 六颗 seed 的 p95 1502 ms）。
+
+**唯一废因仍然只有 PLATEAU**（`pSet` 推不到全解，`js/engine/generate.js:150`），
+`COUNTER` 一次都没出现——也就是说这两档**根本没走到认证计数那一步**
+（`js/engine/generate.js:155`）。上一版的说法是「三张出货盘的 nodes 1272 / 4695 / 6010，
+仍远小于 `CERT_BUDGET_NODES = 5_000_000`」（`js/engine/generate.js:32`）；
+这一版更干净：卡住档位的是自由度 1 与 2，DP 那一侧连出场机会都没有。
+⇒ C2 那条判据（废因不许出现 PLATEAU 以外的东西、认证计数不许 stopped）本轮为绿，
+结论没变，所以本节不必改写。
 
 档内的降级路径是**已经写进产品**的那一条：12×12 偶尔撞 `maxAttempts=60` ⇒
 `shipBoard` 如实返回 `NO_BOARD`（`js/engine/generate.js:171-174`），界面最多再敲 8 颗自己 mint 的

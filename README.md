@@ -14,9 +14,9 @@
 
 ## 一、跑起来
 
-零运行时依赖：`package.json` 全文 35 行，顶层键只有
+零运行时依赖：`package.json` 全文 37 行，顶层键只有
 `name` / `version` / `description` / `type` / `private` / `scripts` / `keywords` / `author` / `license`
-——没有 `dependencies`，也没有 `devDependencies`（`scripts` 块在 `package.json:7-19`），
+——没有 `dependencies`，也没有 `devDependencies`（`scripts` 块在 `package.json:7-21`），
 不需要 `npm install`。
 
 | 命令 | 做什么 | 出处 |
@@ -24,7 +24,9 @@
 | `npm start` | 本机静态服务，端口 5326（根形态） | `package.json:8`、`server.cjs:64` |
 | `npm test` | node 侧总门：语法闸 + 禁词源闸 + seed 源闸 + 六套 suite | `package.json:10`、`tools/check.mjs:1-2` |
 | `npm run probe` | 只跑剂量表（成本与选择性的观测） | `package.json:17`、`tools/generator-probe.mjs:19-23` |
-| `npm run verify` | 全闸：node 腿 + 真 Chrome + 真指针的六条腿 | `package.json:18`、`tools/verify.sh:1-2` |
+| `npm run balance` | 平衡闸：按档量出货墙钟，现算 `budgetMs` / band 并当门判（CI 里有它自己那一步） | `package.json:18`、`tools/balance.mjs:1-18` |
+| `npm run ceiling` | 档外天花板：14×14 / 16×16 各四颗固定 seed，与本文 §五 那张表对账。**不进 CI** | `package.json:19`、`tools/ceiling.mjs:1-18` |
+| `npm run verify` | 全闸：node 腿 + 真 Chrome + 真指针的六条腿 | `package.json:20`、`tools/verify.sh:1-2` |
 
 端口 5326 / 5327 / 9378 是一批数，写死在 `server.cjs:64-65`、`tools/verify.sh:28-30`、
 `tools/playtest.cjs:32`。这三个号漂移的代价不是「连不上」而是「连上别人家的盘」，
@@ -200,7 +202,7 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 | **不承诺线索最少** | 极小只在「单颗摘除」的意义上成立，而且是四趟贪心；每盘进入复核的箭头 med 只有 1–2 条，多数箭头是被「改黑即撞黑格相邻」的前置过滤挡掉的，从未被计数器正面拒绝过。本轮 16 盘合计删掉 3 / 6 / 7 / 8 颗箭头。 | `js/engine/generate.js:103`、`js/engine/generate.js:112`、`js/engine/generate.js:121` |
 | **不承诺界面手感与美术** | 浏览器闸只认三种证据：DOM 矩形与文本、画布像素、真指针事件读数。它证的是「玩家拿到了什么」，不是「好不好看」。`.hidden`、类名、注释里的意图一概不算证据。 | `tools/scenarios.js:5-8`、`tools/verify.sh:13-14` |
 | **不承诺 `score` 可跨引擎/跨盘比较** | 本仓唯一的 `score` 是 `pSet` 内部给候选动作排序用的 `rolesDone*2 + edgesDone`，它只是一个贪心键，没有任何一处把它当难度、质量或成绩输出。 | `js/engine/generate.js:42`、`js/engine/generate.js:85-87` |
-| **不承诺菜单外的档能出货** | 用同一套出货默认值（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`）实测：14×14 四颗 seed 出 3 颗，墙钟逐样本 `[633 1745 2961 3379]` ms、attempts `[10 37 57]`；16×16 四颗只出 1 颗，墙钟 `[4757 4957 5019 5108]` ms，那颗出货的 attempts 是 59/60——**已经贴着封顶**。失败的唯一废因是 PLATEAU（本轮 14×14 累计 161、16×16 累计 238 次），也就是 `pSet` 推不到全解，不是计数器撞预算。这两档不在菜单里（`js/engine/generate.js:35-40`）。 | `js/engine/generate.js:150`、`js/engine/generate.js:28` |
+| **不承诺菜单外的档能出货** | 仓内复跑器 `tools/ceiling.mjs` 用**同一套出货默认值**（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`，`js/engine/generate.js:27-28`）打四颗**写死的** seed（`cl-14x14-0..3`、`cl-16x16-0..3`，不由日期派生）：本轮 2026-09-29 实测 **14×14 出货 0/4、16×16 出货 0/4**，八颗 seed 把 60 次换盘机会全部撞满；逐样本墙钟 14×14 `[3229 2983 3072 3131]` ms、16×16 `[4462 5283 5076 5546]` ms（load1 1.1~2.0，node v26.8.1），**每一颗都越过房子口径 2000 ms**。唯一废因仍是 PLATEAU（两档各累计 240 次），`COUNTER` 出现 0 次——`pSet` 推不到全解（`js/engine/generate.js:150`）就 continue，压根走不到认证计数那一步（`js/engine/generate.js:155`），所以卡的不是 DP 成本。⚠ 上一版这里写的是「14×14 出 3/4、16×16 出 1/4、那颗 attempts 59/60、墙钟 `[633 1745 2961 3379]`」：那批数出自**仓外**的桌面筛探针（另一段 seed 空间，clone 之后重跑不出来），换成上面这四颗 seed 的读数就是 0/4——结论方向没变（只会更硬），文档以仓内可复跑的那份为准。这两档不在菜单里（`js/engine/generate.js:35-40`）。 | `tools/ceiling.mjs:45-56`、`tools/ceiling.mjs:110-135`、`js/engine/generate.js:28` |
 | **不承诺 12×12 的 p95 在没有争用的机器上也一样** | 本轮 12×12 p95 1248 ms 是 `load1 = 3.39~3.95`（15 核）下的观测值；同一批盘两次跑的 p95 相差 1 ms、med 相差 24 ms，说明墙钟对负载敏感。门禁本身就把负载和墙钟一起打印，并注明「不是最坏值」。 | `tools/generator-probe.mjs:45`、`tools/generator-probe.mjs:107`、`tools/generator-probe.mjs:12` |
 | **不承诺 P10 是一条难度梯级** | 本轮 64 张出货盘上 P10 命中 0 盘（四档全 0），它的价值是健全性证人。这条被写成红线：命中盘数一旦不是 0 就直接红。 | `js/engine/pencil.js:17-19`、`tools/generator-probe.mjs:82` |
 | **不承诺「同一个 seed 永远同一张盘」跨版本成立** | seed→盘 是纯函数（判定路径上没有随机数也没有时钟），但**流水线一改版同一个 seed 就是另一张盘**。存档靠题面指纹对账，对不上就作废旧笔迹并当面向玩家说明。 | `js/engine/generate.js:168-175`、`js/ui/puzzle.js:24-28`、`js/store.js:84-90`、`js/main.js:268-271`、`js/main.js:294-297` |
@@ -212,9 +214,35 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 
 `node tools/check.mjs` 本轮：7 行 RESULT、741 条断言、红 0。
 逐套：rule 48 / pencil 435 / counter 71 / golden-write 7 / golden-test 156 / generator-probe 24，
-聚合 check 129（套件表 `tools/check.mjs:17-24`，行数与格式判定 `tools/check.mjs:106-124`，
+聚合 check 131（本轮新增的两个工具也被语法门扫到，23 → 25 个文件；套件表 `tools/check.mjs:17-24`，行数与格式判定 `tools/check.mjs:106-124`，
 外加产物边界那两条 grep 的 27 项 `tools/check.mjs:126-143`——它们与 CI 用同一个正则，
 本仓第一次推上去时 CI 就是红在这一条上，而当时本地全绿）。
+
+`node tools/balance.mjs` 本轮：`RESULT balance ok=true checks=37 fails=0`（16 张/档、
+load1 1.66~2.14、node v26.8.1）。它在 CI 里是 `check` job 的一条**独立 step**
+（`.github/workflows/ci.yml:89-114`），**不是**第七套 suite：加进 `SUITES`
+就得同时改 `tools/check.mjs:17-24`、`tools/verify.sh:265` 的 `need` 列表和上面那些「六套」注释。
+它按档现算定价式 **`budgetMs = max(10, ceil(p95 × 4 / 10) × 10)`**（单位 ms，向上取整到 10 ms、地板 10 ms；
+绝对值逐档打印，需求卡那条「不许用『中位×2』当基线」在这里落实——`med` 进不了这个式子），
+band 用 **`[max(1, floor(med × 0.4)), max(lo + 1, ceil(p95 × 1.6))]`**；两个式子都抄自
+兄弟仓的代码（`../z-biz-game-hidato-cos/tools/balance.mjs:96-100`、`../z-biz-game-zebra-cos/tools/balance.mjs:182-186`，
+那里判的是 p95 而不是单次 max）。本轮量出来的定价依据与由此现算的两个数（`tools/balance.mjs:36-45` 那张表）：
+
+| 档 | 墙钟 med / p95 / max（ms） | budgetMs（ms） | band |
+|---|---|---|---|
+| 6×6 | 1 / 6 / 6 | 30 | [1, 11] |
+| 8×8 | 6 / 38 / 38 | 160 | [2, 61] |
+| 10×10 | 43 / 188 / 188 | 760 | [17, 301] |
+| 12×12 | 568 / 1193 / 1193 | 4780 | [227, 1910] |
+
+⚠ 两件事必须一起读：① N=16 时 p95 **就是**那批样本里的最狠一张（分位数口径沿用
+`tools/generator-probe.mjs:26`），所以这张表偏保守而不是偏乐观；② 同一批盘两次运行的 p95
+读成 1193 与 1242 ms（负载 1.7 与 2.0），所以 band/budgetMs 是**负载下的观测值**，
+B1 那条判据给的是 4 倍余量（`budgetMs` 本身就是 p95×4），不是逐位相等。
+这张表现在**只活在 `tools/balance.mjs` 里**，没进 `js/engine/generate.js` 的档位表——
+档位表一动，浏览器闸那 283 条断言就得重跑，那是另一轮的事。
+
+`npm run ceiling` **不进 CI**：它是量天花板的，不是门，写进 CI 就变成每天重测一次结论。
 
 `bash tools/verify.sh` 本轮 ALL GREEN：283 条浏览器断言、红 0——
 root 9 场 118 条、prefix 9 场 118 条、mobile 3 场 47 条；
@@ -245,6 +273,8 @@ tools/check.mjs            node 侧总门（静态门 + 六套 + RESULT 数行�
 tools/{rule,pencil,counter,golden}-test.mjs  四套单测
 tools/write-golden.mjs     冻结快照；--check 是只读对照
 tools/generator-probe.mjs  剂量表 + 红线
+tools/balance.mjs          平衡闸：出货墙钟定价（budgetMs / band），CI 里的独立 step
+tools/ceiling.mjs          档外天花板：14×14 / 16×16 的复跑器（不进 CI）
 tools/reference.mjs        暴力枚举器（计数器的第二台机器）
 tools/verify.sh            六条腿的生命周期（一条判据都不在这里）
 tools/scenarios.js         八场判据（只认 DOM 矩形 / 画布像素 / 真指针）

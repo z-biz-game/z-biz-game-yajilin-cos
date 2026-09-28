@@ -86,6 +86,33 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # balance 是**独立 step**，没进 tools/check.mjs 的 SUITES：进了就把「六套」变成七套，
+      # 而 ci.yml:13/15/104 那三行注释、tools/verify.sh:265 的 need 列表、DESIGN §三 的成套数字
+      # 全要跟着改——这一族的注释与判据不一致过一回，别再制造第二处。
+      # 分工照 z-biz-game-triplets-cos/.github/workflows/ci.yml:52-59：balance 当门进 CI，
+      # `npm run ceiling` 不进——它是量天花板的，不是门，写进 CI 就变成每天重测一次结论。
+      # 收的判据只有一条：拿到 `RESULT balance` 行，且 ok=true、fails=0、checks>0。
+      - name: Difficulty ladder is still measured (balance)
+        run: |
+          set -eo pipefail
+          node tools/balance.mjs | tee balance.log
+          python3 - <<'PY'
+          import re, sys
+          hit = None
+          for line in open('balance.log', encoding='utf-8'):
+              m = re.match(r'RESULT balance ok=(\w+) checks=(\d+) fails=(\d+)', line.strip())
+              if m:
+                  hit = m
+          if hit is None:
+              print('::error::没收到 RESULT balance 行（跑挂了还是格式改了？）')
+              sys.exit(1)
+          okv, c, f = hit.groups()
+          print('收到 RESULT balance：ok=%s checks=%s fails=%s' % (okv, c, f))
+          if okv != 'true' or int(c) <= 0 or int(f) != 0:
+              print('::error::balance 红：ok=%s checks=%s fails=%s' % (okv, c, f))
+              sys.exit(1)
+          PY
+
   # ── job 2：浏览器闸，两种 URL 形态都跑 ────────────────────────────────────────
   # 只测根形态是这一族门禁最贵的一次事故：兄弟仓本地全绿、Pages 上的站点 404，因为
   # Pages 把部署目录挂在 /<仓库名>/ 下面。所以这两条腿（根 / 前缀）在 CI 里都在，
