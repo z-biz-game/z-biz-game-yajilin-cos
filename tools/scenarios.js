@@ -437,12 +437,26 @@
     ck('boot: 页面自己写了存档（seed/尺寸/笔迹都在里面，刷新才谈得上续局）',
       !!localStorage.getItem('yajilin.save.v1'), `keys=${Object.keys(localStorage).join(',')}`);
 
-    setExpect({ bootSeed: g.seed, bootFp: g.puzzle.fingerprint, bootTimeOrigin: performance.timeOrigin, bootHref: location.href });
+    // 子资源必须真的拿到 2xx/3xx：前缀腿最容易出的事故是页面里写死一个绝对路径
+    // （"/css/game.css"）——DOM 照样在、只有样式丢了，而且那声 404 只在控制台里响一下。
+    // resource timing 的 responseStatus 是浏览器自己记的账，比「看直方图猜样式在不在」硬。
+    const res = performance.getEntriesByType('resource');
+    const badRes = res.filter((e) => !(e.responseStatus >= 200 && e.responseStatus < 400));
+    ck('boot: 每一个子资源都真的 2xx/3xx（responseStatus 逐条读回；写死的根路径在前缀腿就死在这条）',
+      res.length >= 2 && badRes.length === 0,
+      `${res.length} 条资源：${badRes.slice(0, 4).map((e) => `${e.responseStatus}<-${e.name.split('/').slice(-2).join('/')}`).join(' ') || '全通'}`);
+
+    // timeOrigin 是「这一趟真的换过文档」的证人：verify.sh 在同一条腿里把 boot 连跑两次，
+    // 第二次的 timeOrigin 必须严格大于第一次——片段导航（同文档跳转）在这里会被当场抓到。
+    // 它只进 report 的 extras（给脚本读），不进 localStorage：交棒给 resume 的那份期望值是
+    // marks 那一场的活（见 ng.marks 末尾的 setExpect），boot 往里写只会把交棒内容顶掉。
     return report({
       // 视口证人：verify.sh 的移动腿读的是**这一场自己报的** vw/vh/dpr，不是桌面的读数。
       // 桌面腿与移动腿的 vw 若一样，那条 Emulation 就没生效（覆写只活在本会话的调用里）。
       vw: innerWidth, vh: innerHeight, dprWin: devicePixelRatio,
       base: document.baseURI,
+      timeOrigin: performance.timeOrigin,
+      resources: res.length,
       seed: g.seed,
       size: `${g.w}×${g.h}`,
       cell: k,
