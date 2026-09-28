@@ -234,6 +234,26 @@ Pages 上线的站点 404。** 原因是 Pages 把部署目录挂在 `/<仓库�
 `--user-data-dir`（`tools/verify.sh:205-212`），否则同源 `localStorage` 会串味——
 `resume` 场读到的可能是上一条腿留下的存档。
 
+### CI 那一红现在自己会说话（改的是看得见，不是判据）
+
+浏览器那条腿第一次推上 GitHub 时红过两回（`rerun-failed-jobs` 也算一回），两回都是同一句
+`devtools never bound on :9378`、退出码 3——可红房里读不出**为什么**：Chrome 自己的 stderr 落在
+`$LOGD/chrome-*.log`（`tools/verify.sh:214-216`），而 `_tmp-*` 整条被 `.gitignore:8` 挡在产物门外，
+artifact 只收了截图。于是那一红的全部信息量就是"没绑上"三个字，等于没法判是 runner 拉不起 Chrome、
+端口被占、还是本机那条 120×0.5 s 的等待不够。
+
+修法只有"把现场证据引出来"，一条判据都没动（这条腿该红还是红，红了也不会因为多打了几行就变绿）：
+
+- `tools/verify.sh:225` 的失败分支现在连打三段：`"$CHROME" --version`、`CPID` 那个进程还活着没、
+  它自己 stderr 的前 60 行；读不到日志文件时明说读不到，而不是静默。
+  这一格是**行内替换**，`verify.sh` 仍是 468 行——上面那张腿表引用的 `:236-243 / :265 / :443-465`
+  一根没漂（行号是证据，插一行就漂一批）。
+- `.github/workflows/ci.yml` 末尾追加一条**非门**的 artifact step（`yajilin-verify-logs`，收 `verify.log`
+  与 `_tmp-verify/`）。它 `if-no-files-found: ignore` 是故意的：证据缺失不该制造第二根红，
+  红不红由上面那两步判。同样是末尾追加，`.github/workflows/ci.yml` 的
+  `:13 / :15 / :26-42 / :62-64 / :65-87 / :76 / :89-114 / :138-148`
+  那些被引用的行号都在插入点之前。
+
 ---
 
 ## 四、证人不等于梯级：P10 与 `allReachable(-1)`
@@ -372,5 +392,5 @@ seed（`js/main.js:26-28`、`js/main.js:254-264`），全失败就把 `NO_BOARD`
   没随仓发布（探针留在工作区根，且被 `.gitignore:8` 的 `_tmp-*` 规则挡在门外）。所以它们是
   **溯源记录**，不是 clone 之后点得开的链接——Clone 出来的仓里读不到，也不该读到。
   反过来，本仓自己那条规矩只约束文档：README/DESIGN 里每一处 `文件:行号` 都指本仓的文件，
-  本轮用 `_tmp-cite-check.mjs`（仓外探针，同上）对两份文档逐条解析过：230 处引用，
+  本轮用 `_tmp-cite-check.mjs`（仓外探针，同上）对两份文档逐条解析过：259 处引用，
   文件不存在的 0 处、行号越界的 0 处。

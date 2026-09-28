@@ -222,7 +222,7 @@ start_chrome() { # 每条腿一个全新的 mktemp profile：同源 localStorage
     curl -fsS -m 1 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1 && break
     sleep 0.5
   done
-  curl -fsS -m 2 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1 || { echo "devtools never bound on :$PORT" >&2; exit 3; }
+  curl -fsS -m 2 "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1 || { echo "devtools never bound on :$PORT —— 下面三段是这一红的现场证据：Chrome 版本 / 我拉起的那个进程还活着没 / 它自己的 stderr" >&2; echo "chrome --version: $("$CHROME" --version 2>&1 || echo '<连 --version 都跑不动>')" >&2; echo "CPID=$CPID alive=$([ -n "$(ps -p $CPID -o pid= 2>/dev/null)" ] && echo yes || echo no)（0=这条腿还没 own 过进程）" >&2; sed -n '1,60p' "$LOGD/chrome-$(basename "$UDD").log" >&2 || echo "读不到 $LOGD/chrome-$(basename "$UDD").log" >&2; exit 3; }
   local bv
   bv=$(curl -fsS -m 2 "http://127.0.0.1:$PORT/json/version" | tr -d '\n' | grep -o '"Browser"[[:space:]]*:[[:space:]]*"[^"]*"' || echo '<no browser string>')
   # 这条 Chrome 也必须是我自己刚拉起来的那一个：--user-data-dir 是新造的临时目录。

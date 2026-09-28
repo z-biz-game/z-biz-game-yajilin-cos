@@ -173,3 +173,19 @@ jobs:
           path: tools/shots/
           if-no-files-found: error
           retention-days: 14
+      # 这一步**不是门**：它只把浏览器那几条腿的现场证据存成 artifact——Chrome 自己的 stderr、
+      # 每条腿的控制台日志、两个 server 的日志、summary.tsv（LOGD="$HERE/_tmp-verify"，verify.sh:41）。
+      # `if-no-files-found: ignore` 是故意的：证据缺失不该制造第二根红，红不红由上面那两步判。
+      # 上一轮 CI 红在 "devtools never bound on :9378"（verify.sh:225 的 exit 3）却读不出为什么——
+      # Chrome 的 stderr 落在 gitignore 的 _tmp-verify/ 里，产物只收了截图。现在两头都通：
+      # verify.sh:225 失败时把版本/进程存活/stderr 原样打到 stdout，这里再把整目录留成证据。
+      - name: 上传 verify.sh 的现场证据（logs，非门）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yajilin-verify-logs
+          path: |
+            verify.log
+            _tmp-verify/
+          if-no-files-found: ignore
+          retention-days: 14
