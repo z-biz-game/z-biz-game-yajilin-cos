@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 档外天花板：量 14×14 与 16×16（菜单只有到 12×12 的四档，`js/engine/generate.js:35-40`），
+// 档外天花板：量 14×14 与 16×16（菜单只有 TIERS 里 inMenu 的那三档，顶到 10×10；`js/engine/generate.js:35-40`），
 // 把 README §五「不承诺菜单外的档能出货」和 DESIGN §七 那两行数字变成**clone 之后重跑得出来**的数。
 // 需求卡第一节原来那批数出自仓外的桌面筛探针，本机之外无法复现——这个文件就是它的户口。
 //
@@ -30,24 +30,24 @@ const TAG = process.env.TAG || 'cl';
 const SIZES = (process.env.SIZES || '14x14,16x16').split(',').map((s) => s.split('x').map(Number));
 const SEEDS = (process.env.SEEDS || '0,1,2,3').split(',').map(Number);
 
-// —— 撞线判据（C3）：两条绝对值，数值由本轮量出来定，来历写在下面这几行 ——
-// 「房子口径」：一次「换一局」的等待超过 2000 ms 就不许当产品路径卖。
-//   本轮实测（load1 1.7、node v26.8.1）：12×12 参照批 6 颗 seed 的 p95 = 1 503 ms；
-//   14×14 四颗逐样本 [3229 2983 3072 3131] ms 且**一颗都没出**；16×16 [4462 5283 5076 5546] ms 同样 0/4。
-//   ⇒ 2000 ms 这条线把「档内」与「档外」夹在中间，不是插在两档读数之间凑出来的。
+// —— 撞线判据（C3）：两条绝对值，来历写在下面这几行，判据本身一条没动 ——
+// 「房子口径」：一次「换一局」的等待超过 2000 ms 就不许当产品路径卖——量的是玩家等不等得起，机器快慢不算理由。
+//   参照批（菜单顶档六颗 seed）**每次现量、不进下面那张 RECORD 对账表**：C3a 那行打印的就是这一趟的读数，代码里不存它。
+//   14×14 / 16×16 那八颗的逐样本读数才钉在下面 RECORD——而且 C1 只按 ×[0.4, 3] 对**量级**，不逐位相等（墙钟对负载敏感）。
+//   ⇒ 2000 ms 夹在菜单顶档与档外两档之间；12×12 本机与 CI runner 分别落在这条线的两侧（四次复跑与 runner 读数都在 DESIGN 第七节），2026-09-29 降出菜单。
 const HOUSE_MS = Number(process.env.HOUSE_MS || 2000);
-// 菜单档的 p95 绝对值线：与 tools/balance.mjs 的 B6 同一个数（那里判四档，这里复测 12×12 那一档当参照）。
+// 菜单档的 p95 绝对值线：与 tools/balance.mjs 的 B6 同一个数（那里判 TIERS.inMenu 那几档，这里复测顶档当参照）。
 const MENU_P95_CEILING_MS = Number(process.env.MENU_CEILING || 2000);
-// C3 的参照批次：12×12 取 6 颗 seed（档内最狠的一档），只用来量 p95，不参与档外结论。
-const REF_SIZE = [12, 12];
+// C3 的参照批次：菜单顶档——12×12 于 2026-09-29 降出菜单（账在 DESIGN 第七节），现在顶档是 10×10。
+const REF_SIZE = [10, 10];
 const REF_SEEDS = 6;
 
-// —— C1 的对账表：本轮重跑落下来的形状，README:203 与 DESIGN §七 那两处已经按这一趟改齐 ——
+// —— C1 的对账表：钉住的那批形状；README §五 与 DESIGN §七 引用的是它，不是某一趟的观测值 ——
 // 表里存的**就是本文件用这四颗 seed 重跑出来的数**。
 // ⚠ 与仓外桌面筛探针的旧读数不一致：旧那批（探针自己的 tag，仓里没有）读的是
 //   14×14 出货 3/4、16×16 出货 1/4；本文件这四颗 seed 读的是**两档都 0/4**。
-//   差别来自 seed 空间换了，不是流水线变了（档内四档的确定量认证 nodes 1623/4250、344/6474
-//   与 DESIGN:288 逐字相同，可作对照）。旧读数在仓里没有出处，所以文档以这一趟为准。
+//   差别来自 seed 空间换了，不是流水线变了（剂量表四档的确定量认证 nodes 1623/4250、344/6474
+//   与 DESIGN §七 那张表逐字相同，可作对照）。旧读数在仓里没有出处，所以文档以仓内这一份为准。
 // wallTol：逐样本墙钟的允许区间（相对表值）——墙钟对负载敏感，这里只抓量级漂移；
 // 出货 seed、attempts、PLATEAU 累计都是确定量，逐颗对死。
 const RECORD = {
@@ -174,7 +174,7 @@ for (const key of Object.keys(results)) {
   const shipMedWall = got.ship.length ? med(got.ship.map((s) => s.ms)) : NaN;
   console.log(`  读数 C3 ${key}：${SEEDS.length} 颗里 ${unship} 颗越过 ${HOUSE_MS} ms（出货的 ${shippedOver.length}/${got.ship.length} 颗）｜出货样本墙钟 med ${got.ship.length ? Math.round(shipMedWall) : '—'} ms｜出货样本 attempts max ${got.ship.length ? imax(got.ship.map((s) => s.attempts)) : '—'}/${ATTEMPTS}`);
   // 「出不了货」这条腿：四颗 seed 里必须至少有一颗敲不出盘（全出 ⇒ 这一档该进菜单）
-  ok(got.ship.length < SEEDS.length, `C3b ${key} 不许四颗 seed 全出货（全出就该把这一档加进 TIERS）`,
+  ok(got.ship.length < SEEDS.length, `C3b ${key} 不许四颗 seed 全出货（全出就该把这一档放回菜单 TIERS[].inMenu）`,
     `实出 ${got.ship.length}/${SEEDS.length}`);
   // 「墙钟进到秒级」这条腿：出货那些盘的墙钟中位数必须越过房子口径（一颗都没出货时由 C3b 承担）
   ok(got.ship.length === 0 || shipMedWall > HOUSE_MS, `C3c ${key} 出货样本的墙钟 med 必须越过房子口径 ${HOUSE_MS} ms ⇒ 整档记 unshippable`,

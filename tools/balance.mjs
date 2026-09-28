@@ -14,8 +14,8 @@
 //
 // ⚠ 下面 MEASURED 那张表是**量出来的**，不是感觉：2026-09-29 本机 node v26.8.1、
 //   15 核、load1 ≈ 2.2，SAMPLES=16 复跑得到（收尾行每次都会重念负载）。
-//   它**没有**进 js/engine/generate.js 的档位表：那张表一动，浏览器闸的 283 条断言就得重跑，
-//   那是另一轮的事。本轮 band/budgetMs 只活在这个文件里，文件头这一句就是它的户口。
+//   它**没有**进 js/engine/generate.js 的档位表：那张表一动（哪怕只动 inMenu 那个开关），浏览器闸那 288 条
+//   断言就得重跑——2026-09-29 那一轮真的重跑了一遍（账在 DESIGN 第七节）。band/budgetMs 只活在本文件。
 import os from 'node:os';
 import { performance } from 'node:perf_hooks';
 
@@ -44,10 +44,10 @@ const MEASURED = {
   '12x12': { med: 568, p95: 1193, max: 1193 },
 };
 
-// 菜单档 p95 的**绝对值**红线（需求卡：给绝对值，不给倍数）。
-// 本轮 12×12 实测 p95 见 MEASURED 那张表；取它向上到 1 000 ms 的那个数当门，
-// 与 tools/ceiling.mjs 的 C3（越过「房子口径」2000 ms ⇒ unshippable）是同一把尺子的两端：
-// 菜单档必须在 2000 ms 之下，档外那两档的量测结果就是用来证明它越过的。
+// 菜单档 p95 的**绝对值**红线（需求卡：给绝对值，不给倍数；判的是 TIERS.inMenu 那几档）。
+// 这条线的来历没变：它比"档内最狠一档"的实测 p95 高一格，用来抓出货路径整体变慢。
+// 变的是"谁在菜单里"——12×12（本机 p95 1193 / runner 2985）于 2026-09-29 降出菜单，顶档回到
+// 10×10（本机 188 / runner 458）；数、判据、2000 这个数都没改，账与代价写在 DESIGN 第七节。
 const MENU_P95_CEILING_MS = Number(process.env.MENU_CEILING || 2000);
 
 // 极小性抽样口径：**不用随机数**（家族红线：seed 与抽样都不许沾时间/随机）。
@@ -195,9 +195,24 @@ for (const tier of TIERS) {
 }
 
 // —— C3 的另一半（菜单档那条绝对值线）见 tools/ceiling.mjs 的文件头说明 ——
-const worstP95 = Math.max(...rows.map((r) => r.p95));
-ok(worstP95 <= MENU_P95_CEILING_MS, `B6 菜单档 p95 的绝对值线：最狠一档 ${worstP95.toFixed(0)} ms ≤ ${MENU_P95_CEILING_MS} ms`,
+// B6 判的是**玩家选得到的那些档**（`TIERS.inMenu`）。12×12 于 2026-09-29 降出菜单：同一份代码
+// 本机 12×12 p95 读 1193 ms（过线），CI 的 ubuntu-latest（2 核）同一轮读 2985 ms（上一轮 3120），
+// 而这条线要承诺的是"玩家按下换一局要等多久"，runner 不是玩家设备。降级省掉的是机器差异，
+// 代价是菜单顶档少一级——两笔都记在 DESIGN 第七节，判据本身（2000 ms 绝对值）一个字没改。
+const MENU_KEYS = TIERS.filter((t) => t.inMenu).map((t) => t.key);
+const worstP95 = Math.max(...rows.filter((r) => MENU_KEYS.includes(r.key)).map((r) => r.p95));
+ok(worstP95 <= MENU_P95_CEILING_MS, `B6 菜单档 p95 的绝对值线：菜单里最狠一档 ${worstP95.toFixed(0)} ms ≤ ${MENU_P95_CEILING_MS} ms（菜单档 = ${MENU_KEYS.join('/')}）`,
   `越过就是出货路径整体变慢，得重估档位表；这一条与 tools/ceiling.mjs 的 C3 用同一个数`);
+// B6b（ANTI-DRIFT）：降档是**改产品**，不是改门。这条不看机器、不看负载，只看菜单的形状——
+//   顶档的面积不许比 10×10 小，所以"顺手把 inMenu 关掉一个来换绿"这条路是红的，而"把 12×12 装回来"
+//   是绿的。它存在的意义就是让降级这件事有成本，跟当年那条墙钟线一样。
+const TOP_MENU = TIERS.filter((t) => t.inMenu).reduce((a, b) => (a.w * a.h >= b.w * b.h ? a : b));
+ok(TOP_MENU.w * TOP_MENU.h >= 100, `B6b 菜单顶档面积不得小于 10×10（当前 ${TOP_MENU.key}＝${TOP_MENU.w * TOP_MENU.h} 格）`,
+  '再往下缩就是拿降级躲门：要缩得先改这一行与需求卡，并把 README/DESIGN 那两张梯级表一起改');
+// 降出去的那一档不是"不再量"：它每轮照样进汇总，只是不再对玩家开放。
+for (const r of rows.filter((x) => !MENU_KEYS.includes(x.key))) {
+  console.log(`  档外（inMenu=false，仍每轮量、仍不进菜单）${r.key}：p95 ${r.p95.toFixed(0)} ms ｜ 表定 budgetMs ${r.budgetMs} ｜ 出货 ${r.recs.length}/${SAMPLES}`);
+}
 
 const LOAD_AFTER = os.loadavg().map((x) => x.toFixed(2)).join(' / ');
 console.log('\n汇总（每档绝对值，ms）');

@@ -13,11 +13,13 @@ import { shipBoard, TIERS } from '../engine/generate.js';
 
 export { TIERS };
 
-// 菜单就是引擎导出的那四档（剂量表与界面共用一份尺寸，别让两处各写一遍）
-export const SIZES = TIERS.map((t) => t.key);
+// 菜单＝TIERS 里 inMenu 的那几档（尺寸仍只有一份，别让界面自己数一套；12×12 在表里但不在菜单里）
+export const SIZES = TIERS.filter((t) => t.inMenu).map((t) => t.key);
 
+// parseSize 却按**整张 TIERS** 解析：降出菜单的那一档不再能新开，但玩家存档里那一局照旧续得上
+// （把它夹到 6×6 的话，界面会说谎——seed 是 12×12 那颗、盘却换了，笔迹全被指纹对账丢掉）。
 export function parseSize(key) {
-  const t = TIERS.find((x) => x.key === key) || TIERS[0];
+  const t = TIERS.find((x) => x.key === key) || TIERS.find((x) => x.inMenu);
   return { w: t.w, h: t.h, key: t.key };
 }
 
@@ -28,8 +30,9 @@ export function fingerprintOf(question) {
 }
 
 // 默认出题参数：引擎里的 DEFAULT_* 就是出货口径，界面上一个都不改。
-// 12×12 在这台机器上偶尔会撞 maxAttempts=60 的封顶（shipBoard 如实返回 NO_BOARD），
-// 所以「换一局」允许再敲一颗 seed；调用方给了明确 seed 时**不许**偷偷换——
+// 「换一局」允许再敲一颗 seed：撞满 maxAttempts=60 时 shipBoard 如实返回 NO_BOARD，而 12×12
+// 观测到的最坏 attempts 已经到 55/60（复跑口径与逐样本读数在 README 第五节那条「不承诺最坏」）。
+// 调用方给了明确 seed 时**不许**偷偷换——
 // 门禁与存档靠的就是「同一个 seed 同一张盘」这句话。
 export function makeQuestion(seed, sizeKey, opts = {}) {
   const { w, h } = parseSize(sizeKey);

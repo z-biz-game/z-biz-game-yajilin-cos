@@ -31,12 +31,12 @@ export const DEFAULT_MAX_ROUNDS = 60;
 export const DIG_BUDGET_NODES = 400_000;  // pDig 每次「删一颗」的唯一性复核预算
 export const CERT_BUDGET_NODES = 5_000_000; // 最终认证计数的节点预算：超了就 stopped ⇒ 整盘作废
 
-// 四档菜单（剂量表与 golden 共用这一份，别让两处各写一遍尺寸）
+// 一份尺寸表，两个用途：剂量表/golden/balance 量全部四档，玩家能选的只有 inMenu 的那三档。
 export const TIERS = [
-  { key: '6x6', w: 6, h: 6 },
-  { key: '8x8', w: 8, h: 8 },
-  { key: '10x10', w: 10, h: 10 },
-  { key: '12x12', w: 12, h: 12 },
+  { key: '6x6', w: 6, h: 6, inMenu: true },
+  { key: '8x8', w: 8, h: 8, inMenu: true },
+  { key: '10x10', w: 10, h: 10, inMenu: true },
+  { key: '12x12', w: 12, h: 12, inMenu: false },  // 降级理由与复跑数都在 DESIGN 第七节
 ];
 
 const scoreOf = (p) => p.rolesDone * 2 + p.edgesDone;

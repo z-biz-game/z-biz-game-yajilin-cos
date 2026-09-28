@@ -526,7 +526,9 @@ $('btn-reset').addEventListener('click', () => {
   newGame({});
 });
 
-for (const t of TIERS) {
+// 下拉里列的就是 puzzle.js 那份 SIZES（菜单只有一处定义；12×12 已经不在里面，新开不了）
+for (const key of SIZES) {
+  const t = parseSize(key);
   const o = document.createElement('option');
   o.value = t.key;
   o.textContent = `${t.key}（${t.w}×${t.h}）`;

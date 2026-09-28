@@ -436,6 +436,14 @@
     eq('boot: 面板箭头数 = 题面 clue 条数（UI 没自己数一套）', text('#stat-clues'), String(g.question.clue.size));
     ck('boot: 页面自己写了存档（seed/尺寸/笔迹都在里面，刷新才谈得上续局）',
       !!localStorage.getItem('yajilin.save.v1'), `keys=${Object.keys(localStorage).join(',')}`);
+    // 菜单的形状是承诺，不是实现细节：下拉里能选到的必须逐字等于引擎里 inMenu 的那几档。
+    // 它两头都挡——挡"引擎降了档而界面还留着"（玩家点到的是一个拿不到货的承诺），也挡"界面自己多列一档"。
+    // 条数只卡下界（≥3 档）：往上加档是产品变好，往下缩才是该红的。
+    const optKeys = [...$('#size-select').options].map((o) => o.value);
+    ck('boot: 尺寸下拉的档位 = 引擎 TIERS 里 inMenu 的那几档（菜单是承诺，界面不自己多列、也不少列）',
+      JSON.stringify(optKeys) === JSON.stringify(a.engine.TIERS.filter((t) => t.inMenu).map((t) => t.key)) &&
+        JSON.stringify(optKeys) === JSON.stringify(a.engine.SIZES) && optKeys.length >= 3,
+      `下拉=${optKeys.join('/')} 引擎=${a.engine.TIERS.filter((t) => t.inMenu).map((t) => t.key).join('/')} SIZES=${a.engine.SIZES.join('/')}`);
 
     // 子资源必须真的拿到 2xx/3xx：前缀腿最容易出的事故是页面里写死一个绝对路径
     // （"/css/game.css"）——DOM 照样在、只有样式丢了，而且那声 404 只在控制台里响一下。
