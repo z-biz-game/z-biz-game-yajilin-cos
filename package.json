@@ -1,0 +1,32 @@
+{
+  "name": "yajilin",
+  "version": "0.1.0",
+  "description": "矢仓林 Yajilin（无灰格读法）— 零猜测的黑格与单环推理。出货的每一盘都同时被两条独立通道判过：不回溯的铅笔求解器（P1–P10）从空盘推到底，穷举计数器以 limit=Infinity 证「恰好一个解」；出货盘上的黑格/环格/边集用的是计数器那张，不是出题器自记的那张。规则：每格恰好三角色之一（箭头线索 / 黑格 / 环格），一条不自交的正交环盖住所有非黑非线索格，黑格不正交相邻，箭头 (格,方向,N) = 该方向射线上的黑格数恰好 N。",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "test": "node tools/check.mjs",
+    "check": "node tools/check.mjs",
+    "rule": "node tools/rule-test.mjs",
+    "pencil": "node tools/pencil-test.mjs",
+    "counter": "node tools/counter-test.mjs",
+    "golden": "node tools/golden-test.mjs",
+    "freeze-golden": "node tools/write-golden.mjs",
+    "probe": "node tools/generator-probe.mjs"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "yajilin",
+    "nikoli",
+    "loop",
+    "black-cells",
+    "logic",
+    "deduction",
+    "no-guess",
+    "procedural",
+    "web"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT"
+}

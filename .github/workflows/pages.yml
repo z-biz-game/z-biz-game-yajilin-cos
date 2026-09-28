@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+# ⚠ 这一轮**没有启用 Pages**（需求卡第七节：轮 1 只有引擎与门禁；壳与站点是轮 2/3 的活）。
+# 所以触发器只留 workflow_dispatch：push 到 main 不会建房、也不会因为「index.html 还不存在」而红。
+# 轮 2 落地 index.html + css/ + js/main.js 时，把 `push: branches: [main]` 加回来，
+# 并把 tools/verify.sh 的浏览器闸接进 ci.yml（两种 URL 形态都要跑，Pages 的形态是 /<repo>/）。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No bundler: the engine ships plain ES modules, so the site is a file copy.
+      #
+      # The allowlist is the point. `path: .` would upload the whole repo, and this repo keeps its
+      # bench inside the tree: tools/golden.mjs holds certified answers for frozen seeds, and
+      # tools/reference.mjs holds a brute-force enumerator. Both are test assets, not product code —
+      # answers on a public site are a spoiler and a cheat sheet, and they'd make "the shipped
+      # bundle is the tested bundle" unfalsifiable. Only index.html, css/ and js/ are reachable
+      # from the page, so only those get copied.
+      #
+      # Action versions are the ones that actually exist: configure-pages@v5 /
+      # upload-pages-artifact@v3 / deploy-pages@v4. The older triple (v3/v1/v2) 404s on the
+      # marketplace while the run still reports green.
+      - name: Assemble static site
+        run: |
+          test -f index.html || { echo 'index.html 还没落地（轮 2 的活）——这条工作流此刻不该被手动跑'; exit 1; }
+          mkdir _site
+          cp index.html _site/
+          cp -r css js _site/
+          if [ -d _site/tools ]; then echo 'tools/ 混进了产物'; exit 1; fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

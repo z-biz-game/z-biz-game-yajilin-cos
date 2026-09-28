@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: engine guarantees (syntax + purity + five suites)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No npm install: js/engine/ has zero runtime dependencies (node:fs is confined to the
+      # node-side CLI harness under tools/), so pulling a package graph into CI here would only
+      # add a network flake in front of a gate that reads plain ES modules.
+      - name: js/ never imports tools/
+        run: |
+          if grep -rnE "(import|export)[^;]*from '[^']*tools/" js/ ; then
+            echo '::error::运行时模块（js/）去够了 tools/ —— 分层又倒了'
+            exit 1
+          fi
+
+      # The artifact boundary is this repo's own red line, so it gets its own grep rather than a
+      # sentence in a README: tools/golden.mjs freezes certified answers (test asset, node-side).
+      # Nothing under js/ or index.html may point at it, otherwise the bench data ships as product
+      # code and the "shipped bundle == tested code" claim stops being checkable.
+      - name: runtime bundle references nothing under tools/
+        run: |
+          if grep -rnE "tools/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test)" js/ index.html 2>/dev/null ; then
+            echo '::error::运行时/页面代码引用了 tools/ —— Pages 产物里不会有这些文件'
+            exit 1
+          fi
+
+      # The real gate. tools/check.mjs runs, in order: `node --check` over every source file; the
+      # forbidden-token grep over js/engine/ (process.env / Math.random / Date.now /
+      # performance.now / require / node: imports — seed determinism and the "no clock, no die"
+      # invariant are read from source, not inferred from a green run); then rule-test, pencil-test,
+      # counter-test, `write-golden --check`, golden-test and the generator dose table, asserting
+      # each one's own `RESULT <suite> ok=true` line and that all six arrived.
+      - name: node tools/check.mjs
+        run: node tools/check.mjs
