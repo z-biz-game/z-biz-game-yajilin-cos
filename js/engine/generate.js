@@ -93,8 +93,15 @@ export function pSet(board, { maxRounds = DEFAULT_MAX_ROUNDS, candLimit = DEFAUL
 }
 
 // 极小化：删一条线索后，铅笔必须仍全解，且计数器必须仍说「唯一」（两条都过才留）
+// ⚠ 与探针的**唯一**差别是记账口径（判定条件逐字相同，出货盘因此逐字相同）：
+//   探针把「铅笔没解完」也塞进 over（它伪造了一个 {count:0,stopped:true}），于是 over 读起来像
+//   「DP 预算耗尽」而实际多是「这步压根没走到计数」。这里拆成两个账：
+//     stuck = 铅笔没全解，没跑计数；over = 真跑了计数但预算耗尽（stopped ⇒ count 不可信）。
+//   同时按需求卡第四节的精神补一条闸门：stopped 的那次删除**不许**被保留——
+//   探针里 `count === 1` 单独成立就会留，理论上存在「数到 1 个就耗尽预算」的漏洞。
+//   实测这个补丁不动任何盘：28 张流水线盘上 stopped∧count===1 出现 0 次（见 tools/check.mjs 复跑）。
 export function pDig(board, { budgetNodes = DIG_BUDGET_NODES, passes = 4 } = {}) {
-  let removed = 0, tried = 0, over = 0, unsound = 0;
+  let removed = 0, tried = 0, over = 0, unsound = 0, stuck = 0;
   for (let pass = 0; pass < passes; pass++) {
     let changed = false;
     for (const i of [...board.clue.keys()]) {
@@ -107,10 +114,11 @@ export function pDig(board, { budgetNodes = DIG_BUDGET_NODES, passes = 4 } = {})
         recompute(board);
         tried++;
         const p = pencil(board);
-        const c = p.solved ? countSolutions(board, { limit: 2, budgetNodes }) : { count: 0, stopped: true };
-        if (c.stopped) over++;
+        const c = p.solved ? countSolutions(board, { limit: 2, budgetNodes }) : null;
+        if (!c) stuck++;
+        else if (c.stopped) over++;
         if (p.contradiction) unsound++;
-        if (p.solved && !p.contradiction && c.count === 1) { removed++; changed = true; }
+        if (c && !c.stopped && p.solved && !p.contradiction && c.count === 1) { removed++; changed = true; }
         else { board.black.delete(i); board.clue.set(i, cl); recompute(board); }
       } else {
         board.black.delete(i);
@@ -119,7 +127,7 @@ export function pDig(board, { budgetNodes = DIG_BUDGET_NODES, passes = 4 } = {})
     }
     if (!changed) break;
   }
-  return { removed, tried, over, unsound };
+  return { removed, tried, over, unsound, stuck };
 }
 
 // 出货一张盘：换环重试直到「铅笔全解 ∧ 计数器认证唯一 ∧ verify() 全绿」三关都过。
@@ -152,7 +160,7 @@ export function makePencilBoard(tag, w, h, {
     // —— CERTIFIED：出货盘的 black/loop/edges **必须是计数器那张**，见文件头坑 2 ——
     b.black = sol.black; b.loop = sol.loop; b.edges = sol.edges;
     const pf = pencil(b);
-    return { ok: true, board: b, natural, mid, clues: b.clue.size, attempts: attempt + 1, rounds: ps.rounds, removed: dg.removed, tried: dg.tried, over: dg.over, nodes: fin.nodes, stillSolved: pf.solved, fired: pf.fired, passes: pf.passes, steps: pf.steps, dead };
+    return { ok: true, board: b, natural, mid, clues: b.clue.size, attempts: attempt + 1, rounds: ps.rounds, removed: dg.removed, tried: dg.tried, over: dg.over, stuck: dg.stuck, unsound: dg.unsound, nodes: fin.nodes, stillSolved: pf.solved, fired: pf.fired, passes: pf.passes, steps: pf.steps, dead };
   }
   return { ok: false, dead };
 }
