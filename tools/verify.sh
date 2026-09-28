@@ -33,10 +33,10 @@ MW=${MOBILE_W:-390}
 MH=${MOBILE_H:-844}
 MDPR=${MOBILE_DPR:-3}
 
-# 临时物一律落在 workspace 根、带 _tmp- 前缀：/tmp 会在会话中途被清掉，而「Chrome 的
-# 用户数据目录被清了」读起来像浏览器崩了，不像门禁自己把证物删了。mktemp 吃 TMPDIR，
-# 所以每条腿新 profile 这件事照样成立，只是那个目录在本仓里、跑得完就回收。
-export TMPDIR="$HERE/_tmp-mk"
+# 临时物在 macOS 上落在 workspace 根、带 _tmp- 前缀：/tmp 会在会话中途被清掉，而「Chrome 的
+# 用户数据目录被清了」读起来像浏览器崩了，不像门禁自己把证物删了。Linux（CI 那一侧）要的相反，
+# 它要短：SingletonSocket 是 Unix domain socket，全路径上限 108 字节，workspace 根一进去就顶穿。
+export TMPDIR=$([ "$(uname -s)" = Darwin ] && printf '%s' "$HERE/_tmp-mk" || printf '%s' /tmp)
 mkdir -p "$TMPDIR"
 LOGD="$HERE/_tmp-verify"
 mkdir -p "$LOGD"
@@ -206,8 +206,8 @@ start_chrome() { # 每条腿一个全新的 mktemp profile：同源 localStorage
     if [ "$CPID" != 0 ]; then kill "$CPID" 2>/dev/null || true; fi
     if [ -n "$UDD" ]; then rm -rf "$UDD"; fi
   fi
-  # -p 把新目录钉在 $TMPDIR（本文件上面已经指到 $HERE/_tmp-mk）：macOS 的 mktemp 不给 -p 时
-  # 会落到 /var/folders 去，那里会被系统在中途清理——证物被清了读起来像浏览器崩了。
+  # -p 把新目录钉在 $TMPDIR（上面那条按平台选：macOS 是本仓的 _tmp-mk，Linux 是 /tmp——那里
+  # 短路径是硬要求）：macOS 的 mktemp 不给 -p 时会落去 /var/folders，系统会中途把它清了。
   UDD=$(mktemp -d -p "$TMPDIR")
   # 不加 --use-gl=angle --use-angle=swiftshader：软件光栅会吃满每一核，而且没有 CDP 客户端时
   # Chrome 不会自己退。

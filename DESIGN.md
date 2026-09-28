@@ -254,6 +254,39 @@ artifact 只收了截图。于是那一红的全部信息量就是"没绑上"三
   `:13 / :15 / :26-42 / :62-64 / :65-87 / :76 / :89-114 / :138-148`
   那些被引用的行号都在插入点之前。
 
+### 那一红读了自己的日志，一句话报出根因（runner 上 profile 路径顶穿 socket 上限）
+
+上一节那三段现场证据在第二次红时真的被读出来了。CI 的 `verify.log` 里躺着：
+
+```
+FATAL:process_singleton_posix.cc:313] Socket path too long:
+/home/runner/work/z-biz-game-yajilin-cos/z-biz-game-yajilin-cos/_tmp-mk/com.google.Chrome.1TYGLP/SingletonSocket
+CPID=2380 alive=no
+```
+
+`--user-data-dir` 里的 `SingletonSocket` 是一个 **Unix domain socket**，全路径上限 108 字节；
+runner 的 workspace 根本身就 76 字节，再加 `_tmp-mk/tmp.XXXXXXXXXX/SingletonSocket` 一定顶穿。
+更难看的是那条 fallback：Chrome 嫌路径长，就在**系统的 temp 目录**里新建一个
+`com.google.Chrome.XXXXXX` 再试一次——而我把 `TMPDIR` 指进了 `$HERE/_tmp-mk`，于是 fallback
+落在同一条长路径上，第二次还是超长，直接 `FATAL` 自杀（`CPID alive=no` 就是这么来的，
+跟"runner 拉不起 Chrome"或"端口被占"都没关系，那条 120×0.5 s 的等待也没资格被怀疑）。
+
+修法是 `tools/verify.sh:36-39` 把 temp 根按平台分开：Darwin 仍用 `$HERE/_tmp-mk`（本机 `/tmp`
+会被中途清掉，那是这条注释存在的原始理由），非 Darwin 用 `/tmp`（CI runner 不会中途清，
+而短路径在那里是硬要求）。`tools/verify.sh:209-210` 的注释跟着改口，`:211` 那句
+`UDD=$(mktemp -d -p "$TMPDIR")` 一字未动——它现在在 Linux 上自然拿到 `/tmp/tmp.XXXXXXXXXX`，
+socket 全路径 40 字节上下。**判据一根没动**：本机复跑 `bash tools/verify.sh` 仍是
+283 条浏览器断言、红 0、ALL GREEN，三条腿的 profile 依旧各是新造的（本轮实测
+`_tmp-mk/tmp.K0dB54CqwS` / `tmp.aV2XnWPahq` / `tmp.pP5rYI6o1L`），四行改动全是行内替换、
+`verify.sh` 仍是 468 行，上面那张腿表与 `:236-243 / :265 / :443-465` 一根没漂。
+
+这一类的账要一次算清：`grep -rln 'export TMPDIR' */tools/verify.sh` 在本 workspace 的
+53 份 `verify.sh` 里只命中这一份——其余各仓的 profile 都是裸 `mktemp -d`（落 `/tmp`）或
+`mktemp -d -t <前缀>`，天然短。也就是说这个缺陷不是家族病，是我上一轮为了"证物别被系统清掉"
+把 TMPDIR 收进仓里时**只在 macOS 上验过**带出来的，所以修也只在这一个仓修。
+教训写在这里而不是只写在 commit 里：一条只在本机验过的路径策略，到了另一种机器上就是一条
+新的红，而它红的地方（浏览器腿）恰好是最不像"路径问题"的地方。
+
 ---
 
 ## 四、证人不等于梯级：P10 与 `allReachable(-1)`

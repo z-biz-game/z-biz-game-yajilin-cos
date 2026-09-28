@@ -189,3 +189,7 @@ jobs:
             _tmp-verify/
           if-no-files-found: ignore
           retention-days: 14
+# 2026-09-29：这一步第一次红就付了账——Chrome 的 stderr 里那句
+# `FATAL:process_singleton_posix.cc:313] Socket path too long: …/_tmp-mk/com.google.Chrome.1TYGLP/SingletonSocket`
+# 就是 `devtools never bound` 的根因（runner 上 profile 路径顶穿 Unix socket 的 108 字节上限）。
+# 根因、修法与"这类缺陷只有本仓有"的账都在 DESIGN.md 第三节最后两小节；判据没为此动过一根。
