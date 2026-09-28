@@ -191,7 +191,7 @@ cleanup() {
   stop_server "$SPID"
   stop_server "$PSPID"
   if [ "$CPID" != 0 ]; then kill "$CPID" 2>/dev/null || true; fi
-  if [ -n "$UDD" ]; then rm -rf "$UDD"; fi
+  if [ -n "$UDD" ]; then rm -rf "$UDD" 2>/dev/null || true; fi   # 收尾时 Chrome 的子进程可能还在写：残留只占盘
   if [ -n "$PROOT" ]; then rm -rf "$PROOT"; fi
   return 0
 }
@@ -204,7 +204,7 @@ disown
 start_chrome() { # 每条腿一个全新的 mktemp profile：同源 localStorage 是会串味的
   if [ "$CDP_UP" = 1 ]; then
     if [ "$CPID" != 0 ]; then kill "$CPID" 2>/dev/null || true; fi
-    if [ -n "$UDD" ]; then rm -rf "$UDD"; fi
+    if [ -n "$UDD" ]; then for t in 1 2 3 4 5 6; do rm -rf "$UDD" 2>/dev/null && break; sleep 0.25; done; [ -e "$UDD" ] && echo "  note 上一腿的 profile 没删净（$UDD）：Chrome 的子进程还在收尾。本腿仍是全新的一条（:211 的 mktemp 给的是新路径），残留只占盘、不动判据" || true; fi
   fi
   # -p 把新目录钉在 $TMPDIR（上面那条按平台选：macOS 是本仓的 _tmp-mk，Linux 是 /tmp——那里
   # 短路径是硬要求）：macOS 的 mktemp 不给 -p 时会落去 /var/folders，系统会中途把它清了。
