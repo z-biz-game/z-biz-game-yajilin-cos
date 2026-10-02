@@ -464,6 +464,71 @@
     ck('boot: 盘面 canvas 不吃纹理（background-image 是 none——取样点只属于引擎画的东西）',
       boardBg === 'none' || boardBg === '', `board background-image=${boardBg}`);
 
+    // ── 帧率无关(dt)：在真页面里用真模块跑三档对拍 ────────────────────────────
+    // 这项判据原本只有 sellability 那条正则 `deltaTime|\bdt\s*=|now-last` 在数**字符串**——
+    // 注释里提一句 dt 就算过，循环里写 `p.x += 0.5` 也照样过。下面量的是行为：同一个动效模块
+    // 按 30/60/120Hz 各自的帧间隔喂到同一个步数，粒子积分必须逐位相同。
+    // 帧间隔一律由模块自己的 simStep 派生（2×、1×、0.5×）而不是写 1/30：1/30 与 2×simStep 在
+    // IEEE754 里不是同一个数，用后者才能让「走满 30 步」这件事在三档上都精确落在同一个步号上
+    // （BRIEF §3 坑①：浮点亏损会少喂 5e-13 秒、累加器少跑一步，凭空判红）。
+    const STEP = A().simStep;
+    const RATES = [[30, STEP * 2], [60, STEP], [120, STEP / 2]];
+    // pulse 不在比对表里：这四条接缝里没有 hintPulse，它恒为 0，留在表里只会稀释判据
+    // （「三档都是 0」不是帧率无关的证据）。粒子数与那四个Σ才是真内容。
+    const DT_FIELDS = ['steps', 'simTime', 'accum', 'particles', 'sumX', 'sumY', 'sumLife', 'sumSpin'];
+    // 采样点取第 30 步（0.5 秒）而不是第 60 步：寿命每步 ×0.94，`life > 0.03` 那道筛子从第 47 步
+    // 起就开始删粒子、第 57 步全删光 ⇒ 60 步处比的是空集的「逐位相同」（假绿），而下面 particles>0
+    // 那条又会把它判成红（假红）。30 步处 10 颗都活着，四个Σ都是真积分。
+    const TARGET_STEPS = 30;
+    A().setPaused(true); // 页面自己的 rAF 循环仍在跑，不让它往累加器里塞真帧时间
+    // reduce 为真时 fx.burst 直接返回 0（那是「减动效是真分支」的证据），可那样的话三档比的就
+    // 是四串恒为 0 的读数——假的逐位相同。所以这里先把动效打开再量，量完按原样还回去。
+    const wasReduce = A().fx().reduce === true;
+    if (wasReduce) document.getElementById('btn-motion').click();
+    try {
+      const probeToSteps = (interval) => {
+        A().fxReset();
+        A().fxBurst(120, 90, 10); // 在第 0 步放同一簇粒子（rng 由这一局的 seed 派生，三档同串）
+        let guard = 0;
+        while (A().fx().steps < TARGET_STEPS && guard++ < 5000) A().fxAdvance(interval);
+        return A().fx();
+      };
+      const dtRuns = RATES.map(([fps, iv]) => ({ fps, s: probeToSteps(iv) }));
+      const dtDiff = [];
+      for (const f of DT_FIELDS) {
+        const vals = dtRuns.map((r) => r.s[f]);
+        if (new Set(vals.map((v) => v.toFixed(12))).size !== 1) dtDiff.push(`${f}=${vals.join('/')}`);
+      }
+      ck(`boot: 帧率无关——同一个动效模块按 30/60/120Hz 的帧间隔喂到第 ${TARGET_STEPS} 步，粒子积分逐位相同（不是靠源码里出现 "dt" 字样）`,
+        dtDiff.length === 0 && dtRuns.every((r) => r.s.steps === TARGET_STEPS) && dtRuns[0].s.particles > 0,
+        `三档 steps=${dtRuns.map((r) => r.s.steps).join('/')} 粒子数=${dtRuns.map((r) => r.s.particles).join('/')} `
+        + `Σx=${dtRuns.map((r) => r.s.sumX.toFixed(9)).join('/')} Σy=${dtRuns.map((r) => r.s.sumY.toFixed(9)).join('/')}`
+        + (dtDiff.length ? ` ★分叉：${dtDiff.join(' | ')}` : ''));
+
+      const invBad = dtRuns.filter((r) => Math.abs(r.s.simTime - r.s.steps * STEP) > 1e-9);
+      ck('boot: 定步长不变量成立（simTime === steps×simStep，绝对时钟只是步数的函数）',
+        invBad.length === 0 && STEP > 0, `simStep=${STEP} 读数=${dtRuns.map((r) => `${r.fps}Hz:${r.s.simTime.toFixed(12)}/${(r.s.steps * STEP).toFixed(12)}`).join(' ')}`);
+
+      // 尺子自检（写进常驻门禁，不只在这轮报告里做一次）：同样**帧数**、不同帧率喂进去，
+      // 灌进累加器的时间本就不同，必须比出差别。若这里也「三档相同」，上面那条 ✅ 就是
+      // 恒等于 0 的读数造成的假绿——所以这一条是前面那条的可信度前提，不是附赠。
+      const probeFrames = (interval) => {
+        A().fxReset();
+        for (let i = 0; i < 40; i++) A().fxAdvance(interval);
+        return A().fx();
+      };
+      const ctl30 = probeFrames(STEP * 2); // 40 帧 @30Hz ⇒ 80 步
+      const ctl120 = probeFrames(STEP / 2); // 40 帧 @120Hz ⇒ 20 步
+      ck('boot: 尺子自检——同样 40 帧但帧率不同，必须比出不同（否则上面那个「三档相同」是假绿）',
+        ctl30.steps > ctl120.steps && ctl30.simTime !== ctl120.simTime,
+        `40 帧：30Hz 走 ${ctl30.steps} 步(simTime=${ctl30.simTime.toFixed(6)}) vs 120Hz 走 ${ctl120.steps} 步(simTime=${ctl120.simTime.toFixed(6)})`);
+    } finally {
+      A().fxReset(); // 别把玩家那侧的粒子留在测试态
+      if (wasReduce) document.getElementById('btn-motion').click(); // 减动效那侧按原样还回去
+      A().setPaused(false);
+      A().render();
+    }
+
     // ── HUD 的行为判据：暂停 / 重来 / 静音 / 全屏 ─────────────────────────────
     // 读 aria-pressed 只能证明「我改了一个属性」。这几条量的是时钟读数、笔表、音频节点数——
     // 全是那个控件宣称自己会改变的东西。

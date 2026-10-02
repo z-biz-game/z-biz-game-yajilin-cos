@@ -122,10 +122,10 @@ let lastFrameSec = 0;
 function frame(now) {
   rafId = requestAnimationFrame(frame);
   const t = now / 1000;
-  const elapsed = lastFrameSec ? t - lastFrameSec : 0;
+  const dt = lastFrameSec ? t - lastFrameSec : 0; // 帧间隔（秒）：全仓唯一吃它的读数
   lastFrameSec = t;
   if (paused()) return; // 暂停 = 一步都不推：这一帧的时间直接丢掉，不进累加器
-  if (fx.advance(elapsed)) render(); // 真推进了步才重画：144Hz 的帧不会白画四分之三
+  if (fx.advance(dt)) render(); // 真推进了步才重画：144Hz 的帧不会白画四分之三
 }
 
 // 减少动效是一条真分支：循环不启动、粒子与脉冲都不存在（setReduce 里连清场一起做掉），
@@ -790,6 +790,15 @@ window.yajilin = {
   audio: audioStats,
   // 动效状态：steps/simTime/accum 是「推进了多少」的读数，三档帧率的比对就量这三个。
   fx: () => fx.state(),
+  // 两条纯透传的接缝（转调 anim.js 已有的 advance/reset，这里不新增任何判断）：
+  // 有了它们，「帧率无关」在仓内就不再只是注释——门禁能在真页面里拿真模块按指定帧间隔喂
+  // 30/60/120Hz，自己复算定步长的读数。跑完必须 fxReset()，别把玩家那侧的动效留在测试态。
+  fxAdvance: (sec) => fx.advance(sec),
+  // 粒子那侧同理：门禁要比的是「同一步数上粒子积分到哪了」（Σx/Σy/Σlife/Σspin），
+  // 拿不到 burst 就只能比恒为 0 的读数——那是假绿。rng 用这一局 seed 派生的 fxRng，
+  // 于是同一张盘在三档帧率上拿到的是同一串随机，逐位可比。
+  fxBurst: (x, y, n = 12, color = '#FFC85C') => fx.burst(x, y, n, fxRng, color),
+  fxReset: () => fx.reset(),
   simStep: SIM_STEP,
   fxSeed: (s) => { fxRng = mulberry32(hashSeed(String(s))); },
   fxAt: (cell) => view.centerOf(cell),
