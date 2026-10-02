@@ -8,7 +8,7 @@
 // engine/pencil.js 的事件流水要下一条被迫的结论，再交给 Game 的公开入口，和玩家自己拖的一笔
 // 是同一条路。唯一留在这层的判断是「指针这一下落在哪一格 / 压着哪一条边」，
 // 而那也要经 view.hitCell / view.hitEdge → 引擎 counter.js prepare() 的那张邻接表。
-import { Palette, Space, applyThemeVars, setReduceMotion } from './theme.js';
+import { Palette, Space, applyThemeVars, setReduceMotion, prefersReducedMotion } from './theme.js';
 import { Store } from './store.js';
 // SW 注册单独一个文件、一条 import：装不上（file://、非安全上下文、Pages 上还没部署 sw.js）
 // 只该让控制台少一行，不该让游戏起不来。
@@ -19,6 +19,9 @@ import { setMuted, isMuted, noteGesture, audioStats, sfx } from './audio.js';
 import { makeQuestion, parseSize, SIZES, TIERS } from './ui/puzzle.js';
 import { Game, RULE_TEXT, RULES, E_ON, E_OFF, E_UNK, BLACK, UNK, UP, RIGHT, DOWN, LEFT } from './ui/game.js';
 import { BoardView } from './render/board.js';
+// 动效层单独一个模块：帧率无关这件事只有在「状态只由步数决定」时才成立，
+// 而那是可以拿出来单独量的——把它塞进接线层就只剩信仰了。
+import { createFx, SIM_STEP } from './render/anim.js';
 // 引擎原样透传给门面（页面加载的就是这张模块图本身，不是为测试另抄的一份）
 import { verify } from './engine/model.js';
 import { pencil, ROLE, EDGE } from './engine/pencil.js';
@@ -106,7 +109,39 @@ function render() {
     if (d >= 0) preview.push([anchor, d]);
   }
   view.draw(game, { preview, cursor, won });
+  fx.draw(view.ctx); // 粒子与脉冲叠在同一块画布上：不另开 canvas，就不必再对一次 DPR/缩放
   paintStats();
+}
+
+// ── 动效循环：全仓唯一吃「帧间隔」的地方 ─────────────────────────────────
+const fx = createFx();
+let fxRng = mulberry32(0x9e3779b9); // 粒子形状跟着 seed 走；比对三档帧率时用的是同一串随机
+let rafId = 0;
+let lastFrameSec = 0;
+
+function frame(now) {
+  rafId = requestAnimationFrame(frame);
+  const t = now / 1000;
+  const elapsed = lastFrameSec ? t - lastFrameSec : 0;
+  lastFrameSec = t;
+  if (paused()) return; // 暂停 = 一步都不推：这一帧的时间直接丢掉，不进累加器
+  if (fx.advance(elapsed)) render(); // 真推进了步才重画：144Hz 的帧不会白画四分之三
+}
+
+// 减少动效是一条真分支：循环不启动、粒子与脉冲都不存在（setReduce 里连清场一起做掉），
+// 画面退化成静帧——不是「把时长写成 0.001s」那种自欺。
+function ensureLoop() {
+  const want = !prefersReducedMotion();
+  fx.setReduce(!want);
+  if (want && !rafId) {
+    lastFrameSec = 0;
+    rafId = requestAnimationFrame(frame);
+  } else if (!want && rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+    fx.reset();
+    render();
+  }
 }
 
 function paintStats() {
@@ -193,6 +228,12 @@ function checkWin() {
   stateLine.textContent = 'verify() 判定通过：每条箭头数齐、黑格不相邻、一条环盖住了所有不是箭头也不是黑格的格。';
   Store.recordSolve(clock(), game.moves);
   sfx.win();
+  // 庆祝落在环上的那些格（还没被涂黑、也不是箭头题面的格），最多 14 处、每处 10 颗。
+  for (let i = 0, made = 0; i < game.n && made < 14; i++) {
+    if (game.role[i] !== UNK) continue;
+    const m = view.centerOf(i);
+    if (fx.burst(m.x, m.y, 10, fxRng, Palette.accent)) made++;
+  }
   Store.clearResume();
   render();
   return true;
@@ -229,6 +270,8 @@ function hint() {
     return { kind: 'noop', moved: false };
   }
   const ev = out.ev;
+  const hp = view.centerOf(cursor >= 0 ? cursor : 0);
+  fx.hintPulse(hp.x, hp.y); // 减少动效时这条返回 false：脉冲不起，笔照样落
   hintNote = `${RULE_TEXT[ev.rule] || ev.rule} —— ${ev.kind === 'role' ? '涂黑那一格' : ev.v === E_ON ? '连上那条边' : '排除那条边'}`;
   noteMoves = game.moves;
   render();
@@ -297,6 +340,10 @@ async function newGame({ seed = null, sizeKey = game ? game.sizeKey : DEFAULT_SI
   // 新一局的时钟刚刚重锚到 now：残留的 pausedAt 会跑到 startedAt 前面去，clock() 于是开始报负数。
   // 暂停态不属于这张新盘，一起清掉，并把按钮画回它该有的样子。
   pausedAt = 0;
+  // 上一局的粒子、累加器、步数都不属于这一局；rng 换成这张盘的 seed 派生，
+  // 于是「同一张盘在不同帧率上跑出的动效」是可逐位对照的，不是每局换个形状。
+  fx.reset();
+  fxRng = mulberry32(hashSeed(String(p.seed)));
   paintPauseUi();
   relayout();
   render();
@@ -663,6 +710,7 @@ $('btn-motion').addEventListener('click', (ev) => {
   ev.currentTarget.textContent = next ? '动效 减' : '动效 全';
   setReduceMotion(next);
   Store.setSetting('reduceMotion', next);
+  ensureLoop(); // 「减动效」必须真的把循环停掉，而不是留着 rAF 在一帧帧空转
 });
 $('btn-reset').addEventListener('click', () => {
   Store.reset();
@@ -740,6 +788,11 @@ window.yajilin = {
     return clock();
   },
   audio: audioStats,
+  // 动效状态：steps/simTime/accum 是「推进了多少」的读数，三档帧率的比对就量这三个。
+  fx: () => fx.state(),
+  simStep: SIM_STEP,
+  fxSeed: (s) => { fxRng = mulberry32(hashSeed(String(s))); },
+  fxAt: (cell) => view.centerOf(cell),
   setPaused,
   restart: restartGame,
   toggleFullscreen,
@@ -758,6 +811,7 @@ window.yajilin = {
   // 静音位从存档里读回来，并把三个 HUD 按钮画成状态的镜像：默认 sound:false，所以首帧上那句
   // 「音效 关」必须是真关着（音频节点数为 0），不是「还没接线的灰按钮」。
   setMuted(!Store.setting('sound'));
+  ensureLoop(); // 循环晚于首帧启动：reduced-motion 的存档位在这一刻才读得回来
   paintPauseUi();
   paintMuteUi();
   paintFullUi();
