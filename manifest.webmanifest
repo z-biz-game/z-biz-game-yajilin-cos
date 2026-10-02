@@ -1,0 +1,42 @@
+{
+  "name": "矢仓林 · Yajilin 黑格与单环推理",
+  "short_name": "矢仓林",
+  "description": "Yajilin（无灰格读法）：每格恰好三种角色之一——箭头线索 / 黑格 / 环格。画一条不自交的正交环盖住所有非黑非箭头格，黑格不正交相邻，箭头数出射线上的黑格数。出货的每一盘都由独立穷举计数器认证唯一解。",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070A14",
+  "theme_color": "#070A14",
+  "lang": "zh-CN",
+  "categories": ["games", "puzzle"],
+  "icons": [
+    {
+      "src": "assets/icons/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

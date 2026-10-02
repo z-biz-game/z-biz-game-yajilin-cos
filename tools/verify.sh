@@ -316,10 +316,18 @@ if [ "$LOCAL" = 1 ]; then
   echo "=== 腿3 prefix：Pages 的前缀形态（按 pages.yml 的部署名单搭一棵替身根）==="
   PROOT=$(mktemp -d -p "$TMPDIR")
   mkdir -p "$PROOT/$REPO"
-  # 名单与 pages.yml 里 Assemble static site 那一步逐条对齐：只有 index.html、css/、js/ 进产物。
+  # 名单与 pages.yml 里 Assemble static site 那一步逐条对齐：index.html、manifest.webmanifest、
+  # sw.js、css/、js/、assets/{icons,textures,sprites} + assets/og.png 进产物。
+  # assets/ 不能整目录挂上来：assets/gen/ 是出题器源码，挂在替身根下就等于挂在公网下，
+  # 而腿4 正是拿「assets/gen/make_art.mjs 必须 404」来证伪这份名单的。
   ln -s "$HERE/index.html" "$PROOT/$REPO/index.html"
+  ln -s "$HERE/manifest.webmanifest" "$PROOT/$REPO/manifest.webmanifest"
+  ln -s "$HERE/sw.js" "$PROOT/$REPO/sw.js"
   ln -s "$HERE/css" "$PROOT/$REPO/css"
   ln -s "$HERE/js" "$PROOT/$REPO/js"
+  mkdir -p "$PROOT/$REPO/assets"
+  for d in icons textures sprites; do ln -s "$HERE/assets/$d" "$PROOT/$REPO/assets/$d"; done
+  ln -s "$HERE/assets/og.png" "$PROOT/$REPO/assets/og.png"
   node "$HERE/server.cjs" "$PHTTP" "$PROOT" >"$LOGD/server-prefix.log" 2>&1 &
   PSPID=$!
   disown
@@ -338,12 +346,15 @@ if [ "$LOCAL" = 1 ]; then
   run "prefix 腿控制台零异常" quiet_leg prefix
   echo "  shots: $(ls tools/shots/prefix-*.png 2>/dev/null | tr '\n' ' ')"
 
-  # ── 腿 4：部署名单的反证 ── tools/、*.md、答案文件在这棵根下必须够不到 ──────────
-  # 名单（pages.yml:36-42）只 cp index.html + css/ + js/，所以 tools/golden.mjs（每张出货盘
-  # 的认证解）与 tools/reference.mjs（暴力枚举器）根本不该被服务出去：公网上的答案既是剧透
-  # 也是作弊小抄，还会让「被测的字节就是出货的字节」这句话不可证伪。
-  echo "=== 腿4 deploy-list：替身根下 tools/、*.md、答案文件必须 404，名单内的必须 200 ==="
+  # ── 腿 4：部署名单的反证 ── tools/、*.md、答案文件、assets/gen/ 在这棵根下必须够不到 ──
+  # 名单（pages.yml 的 Assemble static site 那一步）只放页面够得到的东西出去，所以
+  # tools/golden.mjs（每张出货盘的认证解）、tools/reference.mjs（暴力枚举器）与
+  # assets/gen/make_art.mjs（出图的构建脚本，PNG 已经在树里、页面里没有一条路径指向它）
+  # 都不该被服务出去：公网上的答案既是剧透也是作弊小抄，构建脚本则是白送的重绘入口；
+  # 更关键的是它们会让「被测的字节就是出货的字节」这句话不可证伪。
+  echo "=== 腿4 deploy-list：替身根下 tools/、*.md、答案文件、assets/gen/ 必须 404，名单内的必须 200 ==="
   MISS_LIST=$(find tools -type f | sort)
+  MISS_LIST="$MISS_LIST $(find assets/gen -type f 2>/dev/null | sort)"
   MISS_LIST="$MISS_LIST $(for f in *.md package.json server.cjs .github/workflows/ci.yml .github/workflows/pages.yml; do [ -e "$f" ] && printf '%s ' "$f"; done)"
   run "部署名单外的都 404、名单内的都 200" env REPO="$REPO" PHTTP="$PHTTP" MISS_LIST="$MISS_LIST" python3 -c "
 import os, subprocess, sys
@@ -361,17 +372,17 @@ res = [(p, code(p)) for p in miss]
 bad = [(p, c) for p, c in res if c != '404']
 for p, c in bad:
     print('  FAIL %s 返回 HTTP %s —— 名单漏了东西（答案或门禁被服务出去了）' % (p, c))
-# 反向也要成：名单里那三样必须 200，否则上面那一串 404 只是因为整棵树都在 404。
-hit = [p for p in ['index.html', 'css/game.css', 'js/main.js', 'js/engine/model.js', 'js/render/board.js']
+# 反向也要成：名单里那几样必须 200，否则上面那一串 404 只是因为整棵树都在 404。
+hit = [p for p in ['index.html', 'css/game.css', 'js/main.js', 'js/engine/model.js', 'js/render/board.js',
+                   'manifest.webmanifest', 'sw.js', 'assets/icons/icon-192.png', 'assets/og.png']
        if code(p) != '200']
 for p in hit:
     print('  FAIL 名单内的 %s 返回 HTTP %s' % (p, code(p)))
-print('  够不到 %d 条（tools/ 全部 %d 个文件 + 仓库根的 *.md/package.json/工作流）；名单内 200 %d 条' % (
-    len(miss) - len(bad), len([p for p in miss if p.startswith('tools/')]), 5 - len(hit)))
+print('  够不到 %d 条（tools/ 全部 %d 个文件 + assets/gen/ + 仓库根的 *.md/package.json/工作流）；名单内 200 %d 条' % (
+    len(miss) - len(bad), len([p for p in miss if p.startswith('tools/')]), 9 - len(hit)))
 sys.exit(0 if (not bad and not hit and len(miss) >= 10) else 1)
 "
-  rm -f "$PROOT/$REPO/index.html" "$PROOT/$REPO/css" "$PROOT/$REPO/js"
-  rmdir "$PROOT/$REPO" "$PROOT" 2>/dev/null || true
+  if [ -n "$PROOT" ] && [ -d "$PROOT" ]; then rm -rf "$PROOT"; fi
   PROOT=""
   stop_server "$PSPID"
   PSPID=0

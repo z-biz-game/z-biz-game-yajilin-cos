@@ -13,6 +13,10 @@ const TYPES = {
   '.cjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  // 这条腿的根要尽量像真部署：Pages 把 .webmanifest 报成 application/manifest+json，
+  // 本文件若不认就退化成 application/octet-stream，等于门禁在一个浏览器会警告的
+  // manifest 上测 PWA。
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',

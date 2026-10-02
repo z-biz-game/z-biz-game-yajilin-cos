@@ -40,15 +40,26 @@ jobs:
         run: |
           set -eo pipefail
           test -f index.html || { echo '::error::index.html 不在树里——这份名单就没有东西可发'; exit 1; }
-          mkdir _site
-          cp index.html _site/
+          mkdir -p _site/assets
+          cp index.html manifest.webmanifest sw.js _site/
+          cp assets/og.png _site/assets/
           cp -r css js _site/
+          # 位图进产物：manifest 里那五条 icons 与页面上的 favicon / apple-touch-icon 指向的就是
+          # 它们，少一个文件等于线上 404——「本地能装、线上不能装」这种红只有跑真名单才抓得到。
+          # assets/gen/ 仍然不进产物：那是构建期的生成脚本，玩家一个字节都不需要。
+          cp -r assets/icons assets/textures assets/sprites _site/assets/
           # 名单就是产物边界，所以这里按**枚举**判，不按「有没有 tools/ 目录」判：
           # 多一个 *.md、多一个 server.cjs、多一个 package.json 都是同一种事故（答案与门禁
           # 被发到公网上），而只查 tools/ 的话它们都能混过去。
           find _site -type f | sed 's|^_site/||' > _site.list
-          awk '{ ok = ($0 == "index.html") || ($0 ~ /^css\//) || ($0 ~ /^js\//); if (ok == 0) { print "名单外的文件进了产物: " $0; bad = 1 } } END { exit (bad == 1) ? 1 : 0 }' _site.list
-          echo "产物 $(wc -l < _site.list | tr -d ' ') 个文件：index.html + css/ + js/，没有 tools/、没有 *.md"
+          awk '{
+            ok = ($0 == "index.html") || ($0 == "manifest.webmanifest") || ($0 == "sw.js") ||
+                 ($0 == "assets/og.png") || ($0 ~ /^assets\/(icons|textures|sprites)\//) ||
+                 ($0 ~ /^css\//) || ($0 ~ /^js\//);
+            if (ok == 0) { print "名单外的文件进了产物: " $0; bad = 1 }
+          } END { exit (bad == 1) ? 1 : 0 }' _site.list
+          if grep -q '^assets/gen/' _site.list; then echo '::error::构建期脚本 assets/gen/ 混进了产物'; exit 1; fi
+          echo "产物 $(wc -l < _site.list | tr -d ' ') 个文件：index.html + manifest + sw.js + css/ + js/ + 位图（icons/textures/sprites/og），没有 tools/、没有 *.md、没有 assets/gen/"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

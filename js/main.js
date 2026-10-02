@@ -10,6 +10,9 @@
 // 而那也要经 view.hitCell / view.hitEdge → 引擎 counter.js prepare() 的那张邻接表。
 import { Palette, Space, applyThemeVars, setReduceMotion } from './theme.js';
 import { Store } from './store.js';
+// SW 注册单独一个文件、一条 import：装不上（file://、非安全上下文、Pages 上还没部署 sw.js）
+// 只该让控制台少一行，不该让游戏起不来。
+import { swRegistration } from './sw-register.js';
 import { makeQuestion, parseSize, SIZES, TIERS } from './ui/puzzle.js';
 import { Game, RULE_TEXT, RULES, E_ON, E_OFF, E_UNK, BLACK, UNK, UP, RIGHT, DOWN, LEFT } from './ui/game.js';
 import { BoardView } from './render/board.js';
@@ -578,6 +581,9 @@ window.yajilin = {
   relayout,
   hideVeil,
   store: Store,
+  // SW 注册的结果留在门面上：排障要能一眼读到「装上了没、没装上是为什么」，
+  // 而不是去控制台里猜一条被 catch 掉的异常。
+  sw: swRegistration,
   palette: Palette,
   space: Space,
 };
