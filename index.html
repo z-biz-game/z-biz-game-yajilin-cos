@@ -43,6 +43,15 @@
       <p class="sub">Yajilin · 黑格与单环推理</p>
     </div>
     <div class="top-actions">
+      <button id="btn-pause" class="ghost" type="button" aria-pressed="false" title="暂停这一局（P）：时钟停在当前毫秒、笔进不去；再按一次原样接着走。">
+        <img class="ic" src="assets/sprites/pause-48.png" alt="" width="20" height="20" /><span class="lb">暂停</span>
+      </button>
+      <button id="btn-mute" class="ghost" type="button" aria-pressed="false" title="音效开关（M）：静音时一个音频节点都不造，不是把音量调成 0。">
+        <img class="ic" src="assets/sprites/sound-off-48.png" alt="" width="20" height="20" /><span class="lb">音效 关</span>
+      </button>
+      <button id="btn-full" class="ghost" type="button" aria-pressed="false" title="全屏（F）：整页全屏，Esc 退出。">
+        <img class="ic" src="assets/sprites/full-48.png" alt="" width="20" height="20" /><span class="lb">全屏</span>
+      </button>
       <button id="btn-motion" class="ghost" type="button" aria-pressed="false">动效 全</button>
     </div>
   </header>
@@ -83,16 +92,17 @@
 
       <aside class="panel">
         <div class="modes" role="group" aria-label="画笔">
-          <button id="btn-mode-loop" class="ghost mode" type="button" aria-pressed="true">画环</button>
-          <button id="btn-mode-black" class="ghost mode" type="button" aria-pressed="false">涂黑</button>
-          <button id="btn-mode-cut" class="ghost mode" type="button" aria-pressed="false">排除叉</button>
-          <button id="btn-mode-erase" class="ghost mode" type="button" aria-pressed="false">擦掉</button>
+          <button id="btn-mode-loop" class="ghost mode" type="button" aria-pressed="true"><img class="ic" src="assets/sprites/loop-48.png" alt="" width="20" height="20" />画环</button>
+          <button id="btn-mode-black" class="ghost mode" type="button" aria-pressed="false"><img class="ic" src="assets/sprites/black-48.png" alt="" width="20" height="20" />涂黑</button>
+          <button id="btn-mode-cut" class="ghost mode" type="button" aria-pressed="false"><img class="ic" src="assets/sprites/cut-48.png" alt="" width="20" height="20" />排除叉</button>
+          <button id="btn-mode-erase" class="ghost mode" type="button" aria-pressed="false"><img class="ic" src="assets/sprites/erase-48.png" alt="" width="20" height="20" />擦掉</button>
         </div>
 
         <div class="acts">
           <button id="btn-hint" class="ghost" type="button" title="问引擎的铅笔要下一条被迫的结论：它落一笔，并把那条规则的那句话说给你。推完了就直说推完了。">提示</button>
           <button id="btn-undo" class="ghost" type="button">撤销</button>
           <button id="btn-clear" class="ghost" type="button">全清</button>
+          <button id="btn-restart" class="ghost" type="button" title="同一张盘从零开始（R）：笔迹、步数、撤销栈、时钟一起归零——「换一局」是另一张盘，这个不是。">重来</button>
           <button id="btn-new" class="primary" type="button">换一局</button>
         </div>
         <p class="rules-note">「提示」只给 <code>js/engine/pencil.js</code> 的下一条<b>被迫</b>结论（该连就连一条、该涂黑就涂一格、该排除就落一个叉），并把那条规则的原文印在上面那行里。它不替你猜，也不去看答案。</p>
@@ -135,7 +145,7 @@
           <span><i class="sw sw-pencil"></i>铅笔落的结论（描边）</span>
           <span><i class="sw sw-bad"></i>度数异常（接不通）</span>
         </div>
-        <p class="keyhint"><b>拖拽</b> 连环 · <b>右键</b> 把指针压着的那条边画成叉（再点一次擦回没落笔） · <b>方向键</b> 移光标 · <b>回车</b> 从锚点动手 · <b>B</b> 涂黑光标格 · <b>退格</b> 擦光标格 · <b>E</b> 换画笔（画环／涂黑／排除叉／擦掉） · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>N</b> 换一局</p>
+        <p class="keyhint"><b>拖拽</b> 连环 · <b>右键</b> 把指针压着的那条边画成叉（再点一次擦回没落笔） · <b>方向键</b> 移光标 · <b>回车</b> 从锚点动手 · <b>B</b> 涂黑光标格 · <b>退格</b> 擦光标格 · <b>E</b> 换画笔（画环／涂黑／排除叉／擦掉） · <b>H</b> 提示 · <b>Z</b> 撤销 · <b>N</b> 换一局 · <b>P</b> 暂停 · <b>R</b> 重来这张盘 · <b>M</b> 音效开关 · <b>F</b> 全屏</p>
       </aside>
     </section>
   </main>

@@ -13,6 +13,9 @@ import { Store } from './store.js';
 // SW 注册单独一个文件、一条 import：装不上（file://、非安全上下文、Pages 上还没部署 sw.js）
 // 只该让控制台少一行，不该让游戏起不来。
 import { swRegistration } from './sw-register.js';
+// 音效单独一个模块：静音的判据（「一个节点都不造」）要在它自己那侧成立，而不是靠接线层
+// 每次调用前记得if 一下——那样漏一处就是一次「静音了但还在响」。
+import { setMuted, isMuted, noteGesture, audioStats, sfx } from './audio.js';
 import { makeQuestion, parseSize, SIZES, TIERS } from './ui/puzzle.js';
 import { Game, RULE_TEXT, RULES, E_ON, E_OFF, E_UNK, BLACK, UNK, UP, RIGHT, DOWN, LEFT } from './ui/game.js';
 import { BoardView } from './render/board.js';
@@ -56,9 +59,14 @@ let hintNote = null;
 let noteMoves = -1;
 
 // ── 时钟 ────────────────────────────────────────────────────────────────
+// 只有这一条读数：baseElapsed（已结算的跑动）+ 本段跑动。暂停不是遮罩特效——它就是把
+// now 钉死在 pausedAt 那一毫秒上；恢复时把 startedAt 整段往前推（推的就是暂停掉的时长），
+// 于是那几分钟不是「事后扣掉的近似值」，而是根本没进过这条算式。
 let startedAt = 0;
 let baseElapsed = 0;
-const clock = () => baseElapsed + (startedAt ? Date.now() - startedAt : 0);
+let pausedAt = 0;
+const paused = () => pausedAt > 0;
+const clock = () => baseElapsed + (startedAt ? (pausedAt || Date.now()) - startedAt : 0);
 function startClock() {
   if (!startedAt) startedAt = Date.now();
 }
@@ -184,6 +192,7 @@ function checkWin() {
   stateLine.className = 'state-line good';
   stateLine.textContent = 'verify() 判定通过：每条箭头数齐、黑格不相邻、一条环盖住了所有不是箭头也不是黑格的格。';
   Store.recordSolve(clock(), game.moves);
+  sfx.win();
   Store.clearResume();
   render();
   return true;
@@ -285,6 +294,10 @@ async function newGame({ seed = null, sizeKey = game ? game.sizeKey : DEFAULT_SI
   anchor = -1;
   baseElapsed = carry.elapsedMs || 0;
   startedAt = Date.now();
+  // 新一局的时钟刚刚重锚到 now：残留的 pausedAt 会跑到 startedAt 前面去，clock() 于是开始报负数。
+  // 暂停态不属于这张新盘，一起清掉，并把按钮画回它该有的样子。
+  pausedAt = 0;
+  paintPauseUi();
   relayout();
   render();
   persist();
@@ -312,6 +325,86 @@ function persist() {
   Store.saveResume(game, clock());
 }
 
+// ── HUD：暂停 / 重来 / 全屏 / 静音 ──────────────────────────────────────────
+// 这四个控件的判据都是「状态真的变了」，不是「按钮亮了一下」：暂停要能用量出来的时钟与笔表证明
+// 盘面没推进，重来要能让同一张盘归零，静音要能让音频节点数停在原地，全屏要挂在真存在的按钮上。
+const swap = (id, on, name, labelOn, labelOff) => {
+  const b = $(id);
+  b.setAttribute('aria-pressed', String(!!on));
+  b.querySelector('.lb').textContent = on ? labelOn : labelOff;
+  b.querySelector('.ic').src = `assets/sprites/${name}-48.png`;
+}
+
+function paintPauseUi() {
+  swap('btn-pause', paused(), paused() ? 'play' : 'pause', '继续', '暂停');
+  wrap.classList.toggle('paused', paused());
+}
+
+function setPaused(next) {
+  if (!game || won) return paused();
+  // 幂等：重复按 P 不许把「暂停」翻成「继续」——那会把玩家手里的键变成掷硬币。
+  if (!!next === paused()) { paintPauseUi(); return paused(); }
+  if (next) {
+    pausedAt = Date.now();
+    stateLine.className = 'state-line hint';
+    stateLine.textContent = `已暂停于 ${fmt(clock())}：时钟停在这一毫秒，笔也进不去。再按一次（P 或那个按钮）接着走。`;
+  } else {
+    startedAt += Date.now() - pausedAt; // 整段暂停从跑动时间里抹掉
+    pausedAt = 0;
+    stateLine.className = 'state-line';
+    stateLine.textContent = `继续，用时 ${fmt(clock())}。`;
+  }
+  paintPauseUi();
+  $('stat-time').textContent = fmt(clock());
+  return paused();
+}
+
+async function restartGame() {
+  if (!game) return null;
+  const seed = game.seed;
+  const sizeKey = game.sizeKey;
+  pausedAt = 0; // 「暂停中按重来」不该把暂停态带进新的一局
+  // 同一颗 seed、同一档尺寸，但 marks/moves/elapsed 一律给零，且不带着存档来对指纹：
+  // 「换一局」是另一张盘，这个是这张盘从零开始——两件事不能混成一个按钮。
+  const out = await newGame({ seed, sizeKey, marks: null, moves: 0, elapsedMs: 0, resumeFrom: null });
+  if (out) {
+    stateLine.className = 'state-line';
+    stateLine.textContent = `重来：同一张盘（seed ${seed}），笔迹与用时归零。`;
+    paintPauseUi();
+  }
+  return out;
+}
+
+function paintFullUi() {
+  const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  swap('btn-full', on, 'full', '退出全屏', '全屏');
+}
+
+function toggleFullscreen() {
+  const el = document.documentElement;
+  const cur = document.fullscreenElement || document.webkitFullscreenElement;
+  if (cur) {
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if (!ex) return Promise.resolve(false);
+    return Promise.resolve(ex.call(document)).then(() => false, () => false);
+  }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) return Promise.resolve(false);
+  // 拒绝（iframe 没允许、用户按了 Esc 的竞态）不许变成未捕获异常：那条红会被读成「游戏坏了」。
+  return Promise.resolve(typeof req === 'function' ? req.call(el, { navigationUI: 'hide' }) : null).then(() => true, () => false);
+}
+
+function paintMuteUi() {
+  swap('btn-mute', !isMuted(), isMuted() ? 'sound-off' : 'sound-on', '音效 开', '音效 关');
+}
+
+function setSound(on) {
+  setMuted(!on);
+  Store.setSetting('sound', !!on);
+  paintMuteUi();
+  return !!on;
+}
+
 function setMode(next) {
   // 判「这个笔名认不认」用 in，不用取值真假：擦掉那支笔的 kind 就是 E_UNK=0，
   // 写成 PENS[next] ? next : 'loop' 会把「擦掉」当成没认出来、悄悄退回画环。
@@ -325,8 +418,13 @@ function setMode(next) {
 // ── 指针 ────────────────────────────────────────────────────────────────
 // 拖拽走的是「相邻格心」：每一段都问 view 要方向，view 再问引擎的邻接表。
 // 不相邻的两格（甩太快）只会挪笔，不会凭空长出一条斜边。
-canvas.addEventListener('pointerdown', (ev) => {
+const onDown = (ev) => {
   if (!game) return;
+  noteGesture(); // 任何一次按下都是用户激活：音频图只在这里被建起来
+  if (paused()) {
+    srCell.textContent = '已暂停：按 P 继续。';
+    return;
+  }
   const cell = view.hitCell(ev.clientX, ev.clientY);
   if (cell < 0) return;
   ev.preventDefault();
@@ -336,6 +434,7 @@ canvas.addEventListener('pointerdown', (ev) => {
     /* 合成事件没有真的 pointerId：下面的 move/up 仍然按 clientX/Y 走同一条路 */
   }
   startClock();
+  if (mode === 'black') sfx.black(); else sfx.edge();
   if (ev.button === 2) {
     const hit = view.hitEdge(ev.clientX, ev.clientY);
     if (hit) game.toggleCut(hit.cell, hit.d); // 不在手势里：setEdge 自己就是一组
@@ -360,9 +459,9 @@ canvas.addEventListener('pointerdown', (ev) => {
     game.eraseAt(cell);
   }
   render();
-});
+};
 
-canvas.addEventListener('pointermove', (ev) => {
+const onMove = (ev) => {
   if (!game || !drag) return;
   const cell = view.hitCell(ev.clientX, ev.clientY);
   if (cell < 0) return;
@@ -395,7 +494,7 @@ canvas.addEventListener('pointermove', (ev) => {
   game.setEdge(last, d, mode === 'cut' ? E_OFF : E_ON);
   cursor = cell;
   render();
-});
+};
 
 async function endDrag() {
   if (!drag) return;
@@ -405,8 +504,27 @@ async function endDrag() {
   await checkWin();
   persist();
 }
+canvas.addEventListener('pointerdown', onDown);
+canvas.addEventListener('pointermove', onMove);
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
+
+// Pointer Events 是主路。老 WebView / 没 PE 的实现上，同一条 onDown/onMove/endDrag 必须照样跑得起来：
+// 这里只换事件源，不换笔——两条路共用同一组函数，才不会出现「鼠标能连边、手指只能涂黑」这种
+// 各写一半的漂移。坐标一律取 clientX/clientY，交给 view.hitCell 去减 rect 与除缩放。
+if (!('onpointerdown' in window)) {
+  const shim = (x, y, button, ev) => ({
+    clientX: x, clientY: y, button, pointerId: 1,
+    preventDefault: () => { if (ev && ev.cancelable !== false) ev.preventDefault(); },
+  });
+  const first = (ev) => (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev;
+  canvas.addEventListener('mousedown', (ev) => { const p = first(ev); onDown(shim(p.clientX, p.clientY, ev.button, ev)); });
+  canvas.addEventListener('mousemove', (ev) => { const p = first(ev); onMove(shim(p.clientX, p.clientY, ev.button, ev)); });
+  canvas.addEventListener('mouseup', (ev) => { const p = first(ev); endDrag(shim(p.clientX, p.clientY, ev.button, ev)); });
+  canvas.addEventListener('touchstart', (ev) => { const p = first(ev); onDown(shim(p.clientX, p.clientY, 0, ev)); }, { passive: false });
+  canvas.addEventListener('touchmove', (ev) => { const p = first(ev); onMove(shim(p.clientX, p.clientY, 0, ev)); }, { passive: false });
+  canvas.addEventListener('touchend', (ev) => { const p = first(ev); endDrag(shim(p.clientX, p.clientY, 0, ev)); }, { passive: false });
+}
 canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
 // ── 键盘 ────────────────────────────────────────────────────────────────
@@ -414,6 +532,15 @@ window.addEventListener('keydown', async (ev) => {
   if (!game) return;
   if (ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName)) return;
   const k = ev.key;
+  noteGesture(); // 键盘同样是用户激活：只用键盘的玩家也该有声音
+  // 暂停中只放行「离开暂停」与那两个不改盘面的 HUD 键；改盘的键（含换一局、提示）一律先挡下来
+  // 并在 aria-live 上说一句——静默吞键会被读成「这键盘是装饰」。
+  const hud = k === 'p' || k === 'P' || k === 'r' || k === 'R' || k === 'm' || k === 'M'
+    || k === 'f' || k === 'F' || k === 'Escape';
+  if (paused() && !hud) {
+    srCell.textContent = '已暂停：按 P 继续。';
+    return;
+  }
   const w = game.w;
   const h = game.h;
   const move = (dr, dc) => {
@@ -483,6 +610,19 @@ window.addEventListener('keydown', async (ev) => {
     persist();
   } else if (k === 'h' || k === 'H') {
     hint();
+  } else if (k === 'p' || k === 'P') {
+    setPaused(!paused());
+    return;
+  } else if (k === 'r' || k === 'R') {
+    await restartGame();
+    return;
+  } else if (k === 'm' || k === 'M') {
+    setSound(isMuted()); // 现在是静音 → 开声；现在是开声 → 静音
+    if (!isMuted()) sfx.tap(); // 只在「刚刚有了声音」这一下响，否则静音的确认也变成声音
+    return;
+  } else if (k === 'f' || k === 'F') {
+    await toggleFullscreen();
+    return;
   } else if (k === 'e' || k === 'E') {
     const order = ['loop', 'black', 'cut', 'erase'];
     setMode(order[(order.indexOf(mode) + 1) % order.length]);
@@ -526,8 +666,19 @@ $('btn-motion').addEventListener('click', (ev) => {
 });
 $('btn-reset').addEventListener('click', () => {
   Store.reset();
+  setSound(!!Store.setting('sound')); // 存档回到默认（sound:false）——音频那侧必须跟着闭嘴，不然「清空存档」清不掉声音
   newGame({});
 });
+$('btn-pause').addEventListener('click', () => setPaused(!paused()));
+$('btn-mute').addEventListener('click', () => {
+  setSound(isMuted());
+  if (!isMuted()) sfx.tap();
+});
+$('btn-full').addEventListener('click', () => { toggleFullscreen(); });
+$('btn-restart').addEventListener('click', () => { restartGame(); });
+// 玩家用 Esc 退出全屏时不经过我们：按钮的标签必须跟着事实走，而不是停在我上一次点它时的样子。
+document.addEventListener('fullscreenchange', paintFullUi);
+document.addEventListener('webkitfullscreenchange', paintFullUi);
 
 // 下拉里列的就是 puzzle.js 那份 SIZES（菜单只有一处定义；12×12 已经不在里面，新开不了）
 for (const key of SIZES) {
@@ -580,6 +731,19 @@ window.yajilin = {
   render,
   relayout,
   hideVeil,
+  // HUD 的「状态」而不是「按钮亮没亮」：暂停中的那一毫秒读数、时钟当前的值、音频真造过的节点数，
+  // 门禁要量的是这三个，读 aria-pressed 只能证明我改了个属性。
+  get paused() {
+    return paused();
+  },
+  get clockMs() {
+    return clock();
+  },
+  audio: audioStats,
+  setPaused,
+  restart: restartGame,
+  toggleFullscreen,
+  setSound,
   store: Store,
   // SW 注册的结果留在门面上：排障要能一眼读到「装上了没、没装上是为什么」，
   // 而不是去控制台里猜一条被 catch 掉的异常。
@@ -591,6 +755,12 @@ window.yajilin = {
 // ── 启动 ────────────────────────────────────────────────────────────────
 (async function boot() {
   setMode('loop');
+  // 静音位从存档里读回来，并把三个 HUD 按钮画成状态的镜像：默认 sound:false，所以首帧上那句
+  // 「音效 关」必须是真关着（音频节点数为 0），不是「还没接线的灰按钮」。
+  setMuted(!Store.setting('sound'));
+  paintPauseUi();
+  paintMuteUi();
+  paintFullUi();
   // 先只看「有没有一份形状正确的存档」，笔迹/步数不在这里搬：newGame 要用存档里的 seed 重画出盘，
   // 再拿那张盘的真实指纹向 Store.resume(指纹) 对一次账（对不上就作废存档、开新局并说给玩家听）。
   const pending = Store.pendingResume();

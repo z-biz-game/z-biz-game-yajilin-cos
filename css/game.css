@@ -76,7 +76,25 @@ body { touch-action: manipulation; }
   text-transform: uppercase;
 }
 
-.top-actions { display: flex; gap: var(--space-gutter); }
+/* 顶栏现在有四个控件（暂停/音效/全屏/动效），不 wrap 就是 390px 上溢出——移动那条腿量的就是
+   「每个控件都在视口里」，溢出会一次性红四条，而根因只是一行 flex-wrap。 */
+.top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-gutter);
+}
+
+/* 笔与 HUD 的小图：48px 的精灵缩到 20 CSS px（dpr 3 下取的是 60 设备像素，仍是降采样，
+   不会糊成马赛克）。alt="" 是刻意的——文字标签已经在旁边，图再读一遍就是噪音。 */
+.ic {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin-right: 6px;
+}
+
+button.mode { display: flex; align-items: center; justify-content: center; }
 
 /* 拇指的下限：44×44 CSS px（WCAG 2.5.5 / iOS HIG）。刻意落在元素级、不是一个 .touch 类：
    靠类的话「新加一个按钮忘了挂类」就是一次静默的回归，而这条 floor 让漏尺寸不可能发生。
@@ -174,6 +192,8 @@ select {
 .chip.select-chip { color: var(--ink); }
 #stat-seed { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+#board-wrap.paused { opacity: 0.6; pointer-events: none; }
+
 #board-wrap {
   position: relative;
   display: flex;
@@ -253,7 +273,7 @@ select {
 .modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-gutter); }
 .modes .mode { padding: 10px 6px; }
 .acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-gutter); }
-.acts #btn-new { grid-column: 1 / -1; }
+.acts #btn-new { grid-column: 2 / -1; }
 
 .stats {
   display: grid;

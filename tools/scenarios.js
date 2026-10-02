@@ -315,6 +315,7 @@
   // 控件分两批：开局就能看到的，与只有赢之后才存在的（胜利卡片里那两个）。
   const ALWAYS_IDS = ['size-select', 'btn-mode-loop', 'btn-mode-black', 'btn-mode-cut', 'btn-mode-erase',
     'btn-hint', 'btn-undo', 'btn-clear', 'btn-new', 'btn-reset', 'btn-motion',
+    'btn-pause', 'btn-mute', 'btn-full', 'btn-restart',
     'board', 'state-line', 'verify-line', 'pencil-list', 'stat-seed', 'stat-verify', 'stat-pencil'];
   const WIN_IDS = ['btn-again', 'btn-close-veil', 'win-meta'];
 
@@ -425,6 +426,78 @@
     }
     ck('boot: 样式表里确有一条把 env(safe-area-inset-*) 计入 padding 的规则（从 CSSOM 读回，不是 grep 源码）',
       insetRules.length > 0, insetRules.join(' | ') || '没有一条');
+
+    // ── HUD 的行为判据：暂停 / 重来 / 静音 / 全屏 ─────────────────────────────
+    // 读 aria-pressed 只能证明「我改了一个属性」。这几条量的是时钟读数、笔表、音频节点数——
+    // 全是那个控件宣称自己会改变的东西。
+    document.getElementById('btn-mode-loop').click();
+    await clickCell(0);
+    await dragPath([0, 1]); // 一条真边，作为「暂停之后不许再变」的基准
+    const marks0 = g.encode();
+    const edges0 = g.loopEdges().length;
+    const t0 = A().clockMs;
+    ck('boot: 前提成立——落笔之后时钟在跑、盘上确有东西可被暂停改变',
+      t0 > 0 && edges0 > 0, `clock=${t0}ms edges=${edges0} marks=${marks0.length}`);
+
+    document.getElementById('btn-pause').click();
+    const tFreeze = A().clockMs;
+    await wait(600); // 跨过 stat-time 那两次 500ms 刷新：只刷一次的话，冻结可能是「还没轮到刷新」
+    const tAfter = A().clockMs;
+    await dragPath([1, 2]); // 暂停中再来一次真指针拖拽
+    ck('boot: 暂停把时钟钉死在冻结那一毫秒，且暂停中的真拖拽改不动笔表',
+      A().paused === true && tAfter === tFreeze && g.encode() === marks0 && g.loopEdges().length === edges0,
+      `冻结 ${tFreeze}ms → 等 600ms 后 ${tAfter}ms；边 ${edges0}→${g.loopEdges().length}，笔表${g.encode() === marks0 ? '未变' : '变了'}`);
+
+    document.getElementById('btn-pause').click();
+    await wait(320);
+    const tRun = A().clockMs;
+    // 关键在后面那个上界：继续后走了 320ms，读数就该只涨 ~320ms。暂停那 600ms 若被算进用时，
+    // 这里会涨到 ~920ms——而那正是「遮罩当暂停」的写法会露馅的地方。
+    ck('boot: 继续之后时钟重新走，且暂停那 600ms 没有进了用时（涨的幅度跟着真实等待走）',
+      A().paused === false && tRun - tAfter >= 200 && tRun - tAfter < 800,
+      `继续后涨进 ${tRun - tAfter}ms（等待 320ms，暂停段 600ms）`);
+
+    const key = (k) => w.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    key('p');
+    const kbPaused = A().paused;
+    key('p');
+    ck('boot: P 键与那个按钮走的是同一条暂停判据（不是只换了图标）',
+      kbPaused === true && A().paused === false, `P 后 paused=${kbPaused}，再 P 后 paused=${A().paused}`);
+
+    const seed0 = g.seed;
+    const tAtR = A().clockMs; // 归零前后的对照：绝对值取决于重画这张盘花了多久，所以判据是「读数掉回去了」
+    key('r'); // 同一张盘从零开始：seed 不许换，笔迹/步数/时钟/撤销栈必须一起归零
+    for (let i = 0; i < 90 && !(A().game && A().game.moves === 0 && A().game.loopEdges().length === 0); i++) await wait(50);
+    const g2 = A().game;
+    ck('boot: R 是这张盘归零，不是换一张盘（seed 逐字相同，笔迹/步数清空，时钟读数掉回比重按之前还小）',
+      !!g2 && g2.seed === seed0 && g2.moves === 0 && g2.loopEdges().length === 0 && g2.blackCells().length === 0
+        && A().clockMs < tAtR,
+      `seed ${seed0} → ${g2 && g2.seed}；moves=${g2 && g2.moves} edges=${g2 && g2.loopEdges().length} clock ${tAtR}ms → ${A().clockMs}ms`);
+
+    const au0 = A().audio();
+    await clickCell(3); // 默认是静音：真落两笔，看它到底造没造节点
+    await dragPath([3, 4]);
+    const au1 = A().audio();
+    ck('boot: 静音是真静音——关着连落两笔之后音频节点数仍是 0（不是「照造节点、把音量设 0」）',
+      au0.muted === true && au0.created === 0 && au1.created === 0 && au1.state !== 'running',
+      `muted=${au1.muted} created=${au1.created} state=${au1.state} supported=${au1.supported}`);
+    document.getElementById('btn-mute').click();
+    const au2 = A().audio();
+    const saved2 = A().store.setting('sound');
+    document.getElementById('btn-mute').click();
+    const au3 = A().audio();
+    ck('boot: 音效按钮翻的是真状态并写进存档（刷新后还认），再点一次回到静音',
+      au2.muted === false && saved2 === true && au3.muted === true && A().store.setting('sound') === false,
+      `开：muted=${au2.muted} 存档=${saved2}；关：muted=${au3.muted} 存档=${A().store.setting('sound')}`);
+
+    const errsBeforeFull = errs.length;
+    document.getElementById('btn-full').click(); // headless 里多半进不去全屏；要的是「不炸、且不撒谎」
+    await wait(200);
+    const fsOn = !!document.fullscreenElement;
+    ck('boot: 全屏挂在真存在的 #btn-full 上，被拒绝时不吐未捕获异常，且按钮标签等于 fullscreenElement 的事实',
+      typeof A().toggleFullscreen === 'function' && errs.length === errsBeforeFull
+        && document.getElementById('btn-full').getAttribute('aria-pressed') === String(fsOn),
+      `errs ${errsBeforeFull}→${errs.length}，fullscreenElement=${fsOn}，aria-pressed=${document.getElementById('btn-full').getAttribute('aria-pressed')}`);
     const veilOnly = reachable(WIN_IDS);
     ck('boot: 卡片里那两个按钮此刻确实不可达（零矩形——它们是「没赢就没有这张卡片」的证据，不是漏测）',
       veilOnly.length === WIN_IDS.length && veilOnly.every((s) => s.includes('零矩形')), veilOnly.join(' | '));
