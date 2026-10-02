@@ -262,7 +262,7 @@ print('  node 侧：%d 行 RESULT（%s），合计 %d 条断言，红 %d 条，�
     len(names), ' '.join(names), tot, fails, os.environ['UEXIT']))
 # 套数不足 = 当场红。少跑一套是这一族门禁最常见的腐化方式：某套改了名、某套崩在 import 之前，
 # 剩下的照样绿，而出口码还是 0。
-need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe']
+need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe', 'store-test']
 missing = [n for n in need if n not in names]
 for x in missing:
     print('  FAIL 缺 RESULT 行：' + x)

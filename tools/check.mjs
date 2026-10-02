@@ -21,6 +21,7 @@ const SUITES = [
   ['golden-write', ['tools/write-golden.mjs', '--check']],
   ['golden-test', ['tools/golden-test.mjs']],
   ['generator-probe', ['tools/generator-probe.mjs']],
+  ['store-test', ['tools/store-test.mjs']],
 ];
 
 function walk(dir, out) {
@@ -130,7 +131,7 @@ ok(got.length === SUITES.length, `只收到 ${got.length}/${SUITES.length} 套 R
  * 口径与 CI 逐字一致：同一个正则、同样**不分注释**（一行注释提到 tools/ 也算命中），
  * 因为这条门要管的是「Pages 产物里到底有没有那些文件」，而 grep 不知道哪段是注释。
  */
-const BOUNDARY = /tools\/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test)/;
+const BOUNDARY = /tools\/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test|store-test)/;
 const IMPORT_TOOLS = /(import|export)[^;]*from '[^']*tools\//;
 const runtimeFiles = walk(join(ROOT, 'js'), []).concat([join(ROOT, 'index.html')]).filter((f) => existsSync(f));
 ok(runtimeFiles.length >= 7, `运行时产物只扫到 ${runtimeFiles.length} 个文件（js/** + index.html）`);

@@ -15,6 +15,7 @@
     "golden": "node tools/golden-test.mjs",
     "freeze-golden": "node tools/write-golden.mjs",
     "probe": "node tools/generator-probe.mjs",
+    "store": "node tools/store-test.mjs",
     "balance": "node tools/balance.mjs",
     "ceiling": "node tools/ceiling.mjs",
     "verify": "bash tools/verify.sh"

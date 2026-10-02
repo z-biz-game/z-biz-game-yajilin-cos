@@ -41,7 +41,7 @@ jobs:
       - name: runtime bundle references nothing under tools/
         run: |
           set -eo pipefail
-          if grep -rnE "tools/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test)" js/ index.html 2>/dev/null ; then
+          if grep -rnE "tools/(golden|reference|check|rule-test|pencil-test|counter-test|generator-probe|write-golden|golden-test|store-test)" js/ index.html 2>/dev/null ; then
             echo '::error::运行时/页面代码引用了 tools/ —— Pages 产物里不会有这些文件'
             exit 1
           fi
@@ -50,8 +50,8 @@ jobs:
       # file; the forbidden-token grep over js/engine/ (process.env / Math.random / Date.now /
       # performance.now / require / node: imports); the seed-source gate over mintSeed's body in
       # js/main.js (默认 seed 不许按日期算——这条只能读源码，跑一遍看不出日期 seed)；
-      # then rule-test, pencil-test, counter-test, `write-golden --check`, golden-test and the
-      # generator dose table, asserting each one's own `RESULT <suite> ok=true` line.
+      # then rule-test, pencil-test, counter-test, `write-golden --check`, golden-test, the
+      # generator dose table and the store decode suite, asserting each one's own `RESULT <suite> ok=true` line.
       - name: node tools/check.mjs
         run: |
           # set -eo pipefail 是本步骤自己的命门：`node tools/check.mjs | tee` 取的是 tee 的
@@ -59,10 +59,10 @@ jobs:
           set -eo pipefail
           node tools/check.mjs | tee check.log
 
-      # 数行这一步是**独立**的：check.mjs 内部也断言「六套 RESULT 全到」，但那是被测者自己数的。
+      # 数行这一步是**独立**的：check.mjs 内部也断言「七套 RESULT 全到」，但那是被测者自己数的。
       # 崩在 spawn 之前、RESULT 行的格式改了、套件被改名——这三种都表现为「绿了但少跑了一套」，
       # 由这里按统一的 RESULT <name> ok=… checks=… fails=… 格式再数一遍。
-      - name: count the verdict lines (六套 + 聚合 = 7 行，缺行即红)
+      - name: count the verdict lines (七套 + 聚合 = 8 行，缺行即红)
         run: |
           set -eo pipefail
           python3 - <<'PY'
@@ -73,7 +73,7 @@ jobs:
               if m:
                   rows.append(m.groups())
           names = [r[0] for r in rows]
-          need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe', 'check']
+          need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe', 'store-test', 'check']
           print('收到 %d 行 RESULT：%s' % (len(rows), ' '.join(names)))
           bad = [n for n in need if n not in names]
           for n, okv, c, f in rows:
@@ -86,9 +86,10 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      # balance 是**独立 step**，没进 tools/check.mjs 的 SUITES：进了就把「六套」变成七套，
-      # 而 ci.yml:13/15/104 那三行注释、tools/verify.sh:265 的 need 列表、DESIGN §三 的成套数字
+      # balance 是**独立 step**，没进 tools/check.mjs 的 SUITES：进了就多一套 RESULT，
+      # 而 ci.yml 自己的 need 列表、tools/verify.sh 的 need 列表、README/DESIGN 里的成套数字
       # 全要跟着改——这一族的注释与判据不一致过一回，别再制造第二处。
+      # （store-test 进 SUITES 时就是按这个口径把三处 need/计数一并挪齐的。）
       # 分工照 z-biz-game-triplets-cos/.github/workflows/ci.yml:52-59：balance 当门进 CI，
       # `npm run ceiling` 不进——它是量天花板的，不是门，写进 CI 就变成每天重测一次结论。
       # 收的判据只有一条：拿到 `RESULT balance` 行，且 ok=true、fails=0、checks>0。
