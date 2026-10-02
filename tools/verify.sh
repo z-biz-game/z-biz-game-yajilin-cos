@@ -373,13 +373,16 @@ bad = [(p, c) for p, c in res if c != '404']
 for p, c in bad:
     print('  FAIL %s 返回 HTTP %s —— 名单漏了东西（答案或门禁被服务出去了）' % (p, c))
 # 反向也要成：名单里那几样必须 200，否则上面那一串 404 只是因为整棵树都在 404。
-hit = [p for p in ['index.html', 'css/game.css', 'js/main.js', 'js/engine/model.js', 'js/render/board.js',
-                   'manifest.webmanifest', 'sw.js', 'assets/icons/icon-192.png', 'assets/og.png']
-       if code(p) != '200']
+# 两张纹理是 css/game.css 用 url(../assets/textures/…) 引的，它们 404 的话页面只会
+# 「安静地没有纸纹」——浏览器不会为一张缺背景的图报错，所以这条得由门禁去够。
+WANT = ['index.html', 'css/game.css', 'js/main.js', 'js/engine/model.js', 'js/render/board.js',
+        'manifest.webmanifest', 'sw.js', 'assets/icons/icon-192.png', 'assets/og.png',
+        'assets/textures/paper-256.png', 'assets/textures/field-256.png']
+hit = [p for p in WANT if code(p) != '200']
 for p in hit:
     print('  FAIL 名单内的 %s 返回 HTTP %s' % (p, code(p)))
-print('  够不到 %d 条（tools/ 全部 %d 个文件 + assets/gen/ + 仓库根的 *.md/package.json/工作流）；名单内 200 %d 条' % (
-    len(miss) - len(bad), len([p for p in miss if p.startswith('tools/')]), 9 - len(hit)))
+print('  够不到 %d 条（tools/ 全部 %d 个文件 + assets/gen/ + 仓库根的 *.md/package.json/工作流）；名单内 200 %d/%d 条' % (
+    len(miss) - len(bad), len([p for p in miss if p.startswith('tools/')]), len(WANT) - len(hit), len(WANT)))
 sys.exit(0 if (not bad and not hit and len(miss) >= 10) else 1)
 "
   if [ -n "$PROOT" ] && [ -d "$PROOT" ]; then rm -rf "$PROOT"; fi

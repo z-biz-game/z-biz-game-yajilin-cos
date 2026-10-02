@@ -427,6 +427,43 @@
     ck('boot: 样式表里确有一条把 env(safe-area-inset-*) 计入 padding 的规则（从 CSSOM 读回，不是 grep 源码）',
       insetRules.length > 0, insetRules.join(' | ') || '没有一条');
 
+    // 纹理是这一轮资产里唯一「缺了也不会有人报错」的一类：背景图 404 时浏览器只当没这回事，
+    // 页面照样能玩。所以判据不能停在「CSS 里写了 url()」——要拿 CSSOM 里那条**解析过**的 URL
+    // （已相对样式表自己的基址解析，Pages 的 /<仓库名>/ 前缀对不对就在这一步见分晓）
+    // 真发一次请求，量它是不是解得开的一张图。
+    const texUrls = [];
+    for (const sheet of [...document.styleSheets]) {
+      let rules = null;
+      try { rules = sheet.cssRules; } catch { continue; } // 跨源样式表读不到；这条腿只认同源那几份
+      for (const rule of [...(rules || [])]) {
+        const bi = rule.style && rule.style.backgroundImage;
+        if (bi && bi.includes('assets/textures/')) {
+          for (const m of bi.matchAll(/url\("([^"]+)"\)/g)) texUrls.push(m[1]);
+        }
+      }
+    }
+    const baseTex = new URL('assets/textures/', document.baseURI).href;
+    const got = [];
+    for (const u of [...new Set(texUrls)]) {
+      const im = await new Promise((res) => {
+        const img = new Image();
+        img.onload = () => res({ u, nat: `${img.naturalWidth}×${img.naturalHeight}`, ok: true });
+        img.onerror = () => res({ u, nat: '取不到', ok: false });
+        img.src = u;
+      });
+      got.push(im);
+    }
+    ck('boot: 样式表引用的纹理取得到、解得开（每张 256×256，且解析后的 URL 落在本仓前缀下）',
+      new Set(texUrls.map((u) => u.split('/').pop())).size >= 2 && got.length >= 2
+        && got.every((t) => t.ok && t.nat === '256×256')
+        && got.every((t) => t.u.startsWith(baseTex)),
+      `引用 ${texUrls.length} 处 / 解析基址 ${baseTex}：${got.map((t) => `${t.u.replace(baseTex, '')}=${t.nat}`).join(' | ') || '样式表里没有一条 background-image 指向 assets/textures'}`);
+    // 反向的一半：canvas 那张盒子的背景必须是空的。它一旦被喂上纹理，render 场景的
+    // histogram() 数到的「场底像素」就不再只属于引擎画的东西，那批像素判据全变哑。
+    const boardBg = getComputedStyle(document.getElementById('board')).backgroundImage;
+    ck('boot: 盘面 canvas 不吃纹理（background-image 是 none——取样点只属于引擎画的东西）',
+      boardBg === 'none' || boardBg === '', `board background-image=${boardBg}`);
+
     // ── HUD 的行为判据：暂停 / 重来 / 静音 / 全屏 ─────────────────────────────
     // 读 aria-pressed 只能证明「我改了一个属性」。这几条量的是时钟读数、笔表、音频节点数——
     // 全是那个控件宣称自己会改变的东西。

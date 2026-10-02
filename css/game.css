@@ -11,8 +11,16 @@
 html, body {
   margin: 0;
   min-height: 100%;
-  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 62%, var(--surface) 100%);
-  background-attachment: fixed;
+  /* 纸纹走在 CSS 层，不在 canvas 层：assets/gen/make_art.mjs 产的 256² 可平铺噪声，
+     alpha 只有 0.09，所以它是「摸得出纸」的那一层，而不是把盘面像素搅浑的那一层——
+     render 场景的 histogram() 取样仍然只属于引擎自己画的东西。
+     路径必须是相对的：Pages 把这棵树挂在 /<仓库名>/ 下，写死 /assets/… 就是一条 404，
+     而且浏览器不会为一张缺了背景图的盒子报任何错。 */
+  background-image: url(../assets/textures/paper-256.png),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 62%, var(--surface) 100%);
+  background-size: 256px 256px, auto;
+  background-repeat: repeat, no-repeat;
+  background-attachment: scroll, fixed;
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -265,7 +273,13 @@ select {
   padding: var(--space-card);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  background: var(--surface);
+  /* 底色仍然是令牌（切主题/减对比时它照旧生效），纹理只是叠在它上面的一张纸。
+     面板与页面用两张不同的纹理：field 走盘面那支色，纸纹走 body 那支——同一份材质语言，
+     不需要第二次翻译。 */
+  background-color: var(--surface);
+  background-image: url(../assets/textures/field-256.png);
+  background-size: 256px 256px;
+  background-repeat: repeat;
 }
 
 /* 四支笔一行：面板 340px 减去左右 16px 内边距 = 308，四个按钮 + 3 个 10px 间距，
