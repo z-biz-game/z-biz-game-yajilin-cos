@@ -23,7 +23,15 @@ body { touch-action: manipulation; }
 #app {
   max-width: 1120px;
   margin: 0 auto;
+  /* 四条边各加各的 inset，不是「padding: var(--space-page)」一句了事：viewport-fit=cover
+     已经声明了页面要铺到刘海与 home indicator 底下，那么不补这笔账就是把第一个控件塞进
+     刘海里。bottom 单独一条，因为它的地基是 --space-inner 而不是 --space-page。 */
   padding: var(--space-page) var(--space-page) var(--space-inner);
+  padding:
+    calc(var(--space-page) + env(safe-area-inset-top, 0px))
+    calc(var(--space-page) + env(safe-area-inset-right, 0px))
+    calc(var(--space-inner) + env(safe-area-inset-bottom, 0px))
+    calc(var(--space-page) + env(safe-area-inset-left, 0px));
   display: flex;
   flex-direction: column;
   gap: var(--space-card);
@@ -70,6 +78,15 @@ body { touch-action: manipulation; }
 
 .top-actions { display: flex; gap: var(--space-gutter); }
 
+/* 拇指的下限：44×44 CSS px（WCAG 2.5.5 / iOS HIG）。刻意落在元素级、不是一个 .touch 类：
+   靠类的话「新加一个按钮忘了挂类」就是一次静默的回归，而这条 floor 让漏尺寸不可能发生。
+   文字位置仍由各自的 padding 决定——floor 只保证命中区，不改变视觉密度。 */
+button,
+select {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -115,7 +132,9 @@ select {
   background: var(--surface-lift);
   border: 1px solid var(--line-heavy);
   border-radius: var(--radius-chip);
-  padding: 2px 6px;
+  /* 表单控件是 UA 样式最容易吃掉 min-height 的地方，所以这里让 padding 自己的账就够高：
+     12 + 12 + 行高 ≈ 44，再叠上那条 floor 只是第二道保险，不是唯一依据。 */
+  padding: 12px 10px;
 }
 
 /* ---------- layout ---------- */

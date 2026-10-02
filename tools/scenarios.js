@@ -392,6 +392,39 @@
     // 卡片真的盖上来之后量。
     const blocked = reachable(ALWAYS_IDS);
     ck(`boot: ${ALWAYS_IDS.length} 个常显控件的 hit box 全都可达（矩形非空 + 中心点 elementFromPoint 落回自己）`, blocked.length === 0, blocked.slice(0, 5).join(' | '));
+
+    // 可达 ≠ 拇指点得到：44×44 CSS px（WCAG 2.5.5 / iOS HIG）这条下限也得**量矩形**。
+    // 只算当前可见的控件——offsetParent 为空说明它住在 display:none 的容器里（胜利卡片那一头
+    // 由 win 场景自己量），把零矩形记成「不足 44」是假红，记成「通过」是假绿。
+    const taps = [];
+    for (const el of document.querySelectorAll('button, select, [role="button"]')) {
+      if (!el.offsetParent) continue;
+      const r = el.getBoundingClientRect();
+      taps.push({ id: el.id || el.tagName.toLowerCase(), w: Math.round(r.width), h: Math.round(r.height) });
+    }
+    const small = taps.filter((t) => t.w < 44 || t.h < 44);
+    ck(`boot: ${taps.length} 个可见控件的命中区短边全都 ≥44px（量的是矩形，不是 CSS 里写过没写过）`,
+      taps.length >= 11 && small.length === 0,
+      `可见 ${taps.length} 个；不足 44 的 ${small.length} 个：${small.slice(0, 6).map((t) => `${t.id}=${t.w}×${t.h}`).join(' ') || '无'}`);
+
+    // viewport-fit=cover 是 env(safe-area-inset-*) 的开关：不带 cover，inset 恒为 0，
+    // #app 那笔 padding 就只是一行装饰。
+    const vp = document.querySelector('meta[name="viewport"]');
+    ck('boot: viewport 带 viewport-fit=cover（否则 inset 永远是 0，补的那笔账是空的）',
+      !!vp && /viewport-fit\s*=\s*cover/.test(vp.content), `content=${vp && vp.content}`);
+    // 而「补了」必须从浏览器解析过的样式表里读回来：写错语法的声明会被解析器丢掉，
+    // grep 文件照样查得到字面量——CSSOM 里读不到才是真没有。
+    const insetRules = [];
+    for (const sheet of [...document.styleSheets]) {
+      let rules = null;
+      try { rules = sheet.cssRules; } catch { continue; } // 跨源样式表读不到；这条腿只认同源那几份
+      for (const rule of [...(rules || [])]) {
+        const pd = rule.style && rule.style.padding;
+        if (pd && pd.includes('env(safe-area-inset')) insetRules.push(rule.selectorText);
+      }
+    }
+    ck('boot: 样式表里确有一条把 env(safe-area-inset-*) 计入 padding 的规则（从 CSSOM 读回，不是 grep 源码）',
+      insetRules.length > 0, insetRules.join(' | ') || '没有一条');
     const veilOnly = reachable(WIN_IDS);
     ck('boot: 卡片里那两个按钮此刻确实不可达（零矩形——它们是「没赢就没有这张卡片」的证据，不是漏测）',
       veilOnly.length === WIN_IDS.length && veilOnly.every((s) => s.includes('零矩形')), veilOnly.join(' | '));
