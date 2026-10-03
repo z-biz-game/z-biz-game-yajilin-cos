@@ -17,7 +17,9 @@
     "probe": "node tools/generator-probe.mjs",
     "balance": "node tools/balance.mjs",
     "ceiling": "node tools/ceiling.mjs",
-    "verify": "bash tools/verify.sh"
+    "verify": "bash tools/verify.sh",
+    "deploy-set": "node tools/deploy-set.mjs",
+    "deploy-set:selftest": "node tools/deploy-set-selftest.mjs"
   },
   "keywords": [
     "game",
