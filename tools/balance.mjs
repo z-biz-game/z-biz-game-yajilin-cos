@@ -12,8 +12,8 @@
 //   墙钟判 p95、不判单次 max；HEADROOM = 2                             —— z-biz-game-zebra-cos/tools/balance.mjs:39、:181-192
 // 需求卡那条「不许用『中位×2』当基线」由 B1 落实：budgetMs 只由 p95 决定，med 进不了这个式子。
 //
-// ⚠ 下面 MEASURED 那张表是**量出来的**，不是感觉：2026-09-29 本机 node v26.8.1、
-//   15 核、load1 ≈ 2.2，SAMPLES=16 复跑得到（收尾行每次都会重念负载）。
+// ⚠ 下面 MEASURED 那张表是**量出来的**，不是感觉：一台 laptop（15 核、node v26.8.1）加 CI
+//   runner 上的三趟读数，一格一趟真实跑（口径与「为什么钉 runner」写在那张表的表头）。SAMPLES=16，收尾行每次重念负载。
 //   它**没有**进 js/engine/generate.js 的档位表：那张表一动（哪怕只动 inMenu 那个开关），浏览器闸那 288 条
 //   断言就得重跑——2026-09-29 那一轮真的重跑了一遍（账在 DESIGN 第七节）。band/budgetMs 只活在本文件。
 import os from 'node:os';
@@ -33,16 +33,32 @@ const FRACS = (process.env.FRACS || DEFAULT_LOOP_FRACS.join(',')).split(',').map
 const TAG = process.env.TAG || 'pg';   // 与剂量表同一段 seed 空间，别另起一套
 const HEADROOM = Number(process.env.HEADROOM ?? 2);
 
-// 本轮量出来的 med/p95/max（ms）：2026-09-29 本机 15 核、load1 1.66、node v26.8.1、SAMPLES=16。
+// 钉住的 med/p95/max（ms）——每一格都是**一趟真实跑**的读数，不合并、不手调：
+//   laptop：2026-09-29 本机 15 核、load1 1.66、node v26.8.1、SAMPLES=16。
+//   ci-a0 ：run 36463860182 的 node job（2 核 ubuntu-latest、load1 0.82）。README §五 早就记着这一趟，
+//           它四条 p95 都低于后面两趟——加它不挪线，只是让包络不是"照着一趟调出来的"。
+//   ci-a1 / ci-a2：**同一笔 commit e7db44f、同一台 4 核 ubuntu runner（node v22.23.3）的两趟**
+//              = run 37190952460 的 attempt 1（6x6 p95 读 36 → 那一趟 B1 红）与 attempt 2（6x6 p95 读 22 → 绿），
+//              中间一行代码没改。
 // ⚠ 分位数口径沿用 tools/generator-probe.mjs:26（q(p95) 取 ceil(0.95×N)−1 那一格），
 //   所以 N=16 时 p95 **就是** max——这条不是抖动估计，是「16 张里最狠那张」，定价因此偏保守。
-//   band 与 budgetMs 由**同一套公式**从这三格现算，表里不存任何手调过的整数。
+//   band 与 budgetMs 由**同一套公式**从这些读数现算，表里不存任何手调过的整数。
+// ⚠ 为什么要钉 runner 那三趟：最小档的墙钟里固定开销占大头（本机 med 1 ms、runner med 4–5 ms），
+//   同一段代码在 runner 上读 22–36 ms 是**机器差**不是**代码差**——attempt 1 红、attempt 2 绿就是当场证据。
+//   拿 laptop 的绝对值判 runner 就是这个仓 B6 那次的病（账在 DESIGN 第七节，当时的处置是把 12×12 请出菜单——那是改产品换绿）。
+//   这条线现在判的是**机器类包络**：本趟必须赢过「钉过的读数里最狠那一趟 × 4」。换绿不许动公式，只许再添一趟真实读数。
+//   **代码变慢**不靠这条抓：golden 把 stats.attempts/nodes/rounds/steps 整条记录按 JSON 逐字比
+//   （tools/golden-test.mjs:71），跨机器、跨引擎恒等，那才是算法层面的回归网。
 const MEASURED = {
-  '6x6': { med: 1, p95: 6, max: 6 },
-  '8x8': { med: 6, p95: 38, max: 38 },
-  '10x10': { med: 43, p95: 188, max: 188 },
-  '12x12': { med: 568, p95: 1193, max: 1193 },
+  '6x6': [{ who: 'laptop', med: 1, p95: 6, max: 6 }, { who: 'ci-a0', med: 4, p95: 25, max: 25 }, { who: 'ci-a1', med: 5, p95: 36, max: 36 }, { who: 'ci-a2', med: 4, p95: 22, max: 22 }],
+  '8x8': [{ who: 'laptop', med: 6, p95: 38, max: 38 }, { who: 'ci-a0', med: 22, p95: 76, max: 76 }, { who: 'ci-a1', med: 17, p95: 73, max: 73 }, { who: 'ci-a2', med: 18, p95: 95, max: 95 }],
+  '10x10': [{ who: 'laptop', med: 43, p95: 188, max: 188 }, { who: 'ci-a0', med: 111, p95: 458, max: 458 }, { who: 'ci-a1', med: 108, p95: 470, max: 470 }, { who: 'ci-a2', med: 84, p95: 367, max: 367 }],
+  '12x12': [{ who: 'laptop', med: 568, p95: 1193, max: 1193 }, { who: 'ci-a0', med: 1419, p95: 2985, max: 2985 }, { who: 'ci-a1', med: 1426, p95: 2997, max: 2997 }, { who: 'ci-a2', med: 1129, p95: 2346, max: 2346 }],
 };
+// 包络两端各取一头：下界是钉过的读数里**最快**的那趟 med，上界是**最慢**的那趟 p95。
+const pinLowMed = (rows) => Math.min(...rows.map((r) => r.med));
+const pinHighP95 = (rows) => Math.max(...rows.map((r) => r.p95));
+const pinNames = (rows) => rows.map((r) => `${r.who} ${r.p95}`).join(' / ');
 
 // 菜单档 p95 的**绝对值**红线（需求卡：给绝对值，不给倍数；判的是 TIERS.inMenu 那几档）。
 // 这条线的来历没变：它比"档内最狠一档"的实测 p95 高一格，用来抓出货路径整体变慢。
@@ -142,24 +158,28 @@ for (const tier of TIERS) {
   const band = bandOf(m, p95);
   rows.push({ key, per, recs, dead, m, p95, mx, budgetMs, band, nodes, tierWall, over, stuck, unsound, certStopped, notSolved, attemptsSum });
 
-  // —— B1：budgetMs 由**本趟实测 p95** 现算（绝对值逐档打印），并且要撑得住表定那条线 ——
+  // —— B1：本趟 p95 必须撑得住**机器类包络**那条线（budgetOf 公式一个字没改，改的是喂进去的那格：从「一台机器的读数」到「钉过的读数里最狠那一趟」） ——
   const ref = MEASURED[key];
   console.log(`\n【${key}】出货 ${recs.length}/${SAMPLES}｜墙钟 ms：med ${m.toFixed(0)} / p95 ${p95.toFixed(0)} / max ${mx.toFixed(0)}`);
   if (ref) {
-    const refBudget = budgetOf(ref.p95);
-    ok(p95 <= refBudget, `B1 ${key} 本趟 p95 ${p95.toFixed(0)} ms ≤ 表定 budgetMs ${refBudget} ms`,
-      `表 p95 ${ref.p95} ms → budgetMs=max(10, ceil(p95×4/10)×10)=${refBudget} ms；本趟 p95 ${p95.toFixed(0)} ms 已经越过——要么负载变了，要么流水线变了`);
-    console.log(`  读数 B1 ${key}：本趟现算 budgetMs=${budgetMs} ms（p95=${p95.toFixed(0)}）｜表定 budgetMs=${refBudget} ms（表 p95=${ref.p95} ms）｜HEADROOM=${HEADROOM}`);
+    const badRow = ref.find((r) => !(r.med <= r.p95 && r.p95 <= r.max));
+    ok(!badRow, `B1 ${key} 钉表每一格都得自洽（med ≤ p95 ≤ max）`, badRow ? JSON.stringify(badRow) : '');
+    const pinP95 = pinHighP95(ref);
+    const setBy = ref.filter((r) => r.p95 === pinP95).map((r) => r.who).join('+');
+    const refBudget = budgetOf(pinP95);
+    ok(p95 <= refBudget, `B1 ${key} 本趟 p95 ${p95.toFixed(0)} ms ≤ 包络 budgetMs ${refBudget} ms`,
+      `钉了 ${ref.length} 趟（${pinNames(ref)} ms）→ 最狠那趟是 ${setBy} 的 p95=${pinP95} → budgetMs=max(10, ceil(p95×4/10)×10)=${refBudget} ms；本趟 p95 ${p95.toFixed(0)} ms 已经越过——要么这台机器比钉过的任何一台都慢（那就添一趟真实读数），要么流水线变了（后者由 golden 逐字对账抓，不靠这一条）`);
+    console.log(`  读数 B1 ${key}：本趟现算 budgetMs=${budgetMs} ms（p95=${p95.toFixed(0)}）｜包络 budgetMs=${refBudget} ms（定线那趟=${setBy} p95=${pinP95}）｜钉表 ${pinNames(ref)}｜HEADROOM=${HEADROOM}`);
   } else {
     ok(false, `B0 ${key} MEASURED 表里没有这一档`, '先跑一趟把 med/p95/max 填进文件头的表，别把它当缺省绿');
   }
 
-  // —— B2：band 判定（对每档**重算**并打印；判 med 落不落在表定 band 里）——
+  // —— B2：band 判定（对每档**重算**并打印；判 med 落不落在包络 band 里——下界取最快那趟，上界取最慢那趟）——
   if (ref) {
-    const refBand = bandOf(ref.med, ref.p95);
-    ok(m >= refBand[0] && m <= refBand[1], `B2 ${key} med ${m.toFixed(0)} ms 落在表定 band [${refBand.join(', ')}] 内`,
-      `本趟重算的 band 是 [${band.join(', ')}]（[floor(med×0.4), ceil(p95×1.6)]）`);
-    console.log(`  读数 B2 ${key}：表定 band [${refBand.join(', ')}] ｜本趟重算 band [${band.join(', ')}]`);
+    const refBand = bandOf(pinLowMed(ref), pinHighP95(ref));
+    ok(m >= refBand[0] && m <= refBand[1], `B2 ${key} med ${m.toFixed(0)} ms 落在包络 band [${refBand.join(', ')}] 内`,
+      `本趟重算的 band 是 [${band.join(', ')}]（[floor(med×0.4), ceil(p95×1.6)]）；包络下界=最快那趟 med ${pinLowMed(ref)}，上界=最慢那趟 p95 ${pinHighP95(ref)}`);
+    console.log(`  读数 B2 ${key}：包络 band [${refBand.join(', ')}] ｜本趟重算 band [${band.join(', ')}]`);
   }
 
   // —— B3：计数器 stopped 必须为 0。两条独立来源：pDig 每次删除复核的 over，
@@ -211,7 +231,7 @@ ok(TOP_MENU.w * TOP_MENU.h >= 100, `B6b 菜单顶档面积不得小于 10×10（
   '再往下缩就是拿降级躲门：要缩得先改这一行与需求卡，并把 README/DESIGN 那两张梯级表一起改');
 // 降出去的那一档不是"不再量"：它每轮照样进汇总，只是不再对玩家开放。
 for (const r of rows.filter((x) => !MENU_KEYS.includes(x.key))) {
-  console.log(`  档外（inMenu=false，仍每轮量、仍不进菜单）${r.key}：p95 ${r.p95.toFixed(0)} ms ｜ 表定 budgetMs ${r.budgetMs} ｜ 出货 ${r.recs.length}/${SAMPLES}`);
+  console.log(`  档外（inMenu=false，仍每轮量、仍不进菜单）${r.key}：p95 ${r.p95.toFixed(0)} ms ｜ 本趟现算 budgetMs ${r.budgetMs}（包络那条线在上面 B1 读数里）｜ 出货 ${r.recs.length}/${SAMPLES}`);
 }
 
 const LOAD_AFTER = os.loadavg().map((x) => x.toFixed(2)).join(' / ');
