@@ -177,7 +177,7 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 现场念过的规则集合是 P2/P4/P5/P6/P9，引擎另报 P1/P3 有命中但流水里没露脸，P8/P10 命中 0。
 这一段量的四件事分别是「每次按都有新东西」「冲突那一步不落笔但点名是哪条规则」
 「提示的笔进撤销栈」「面板读数逐行等于引擎那份账」
-（`js/ui/game.js:314-340`、`js/main.js:193-211`、`tools/scenarios.js:1203-1209`、`tools/scenarios.js:1257-1259`）。
+（`js/ui/game.js:314-340`、`js/main.js:193-211`、`tools/scenarios.js:1211-1217`、`tools/scenarios.js:1265-1267`）。
 
 ### 承诺 3：关于「每颗线索单颗摘除后不再唯一」——代码实际证到的是这些
 
@@ -211,7 +211,7 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 | 不承诺 | 为什么（本轮实测/源码） | 出处 |
 |---|---|---|
 | **不承诺线索最少** | 极小只在「单颗摘除」的意义上成立，而且是四趟贪心；每盘进入复核的箭头 med 只有 1–2 条，多数箭头是被「改黑即撞黑格相邻」的前置过滤挡掉的，从未被计数器正面拒绝过。本轮 16 盘合计删掉 3 / 6 / 7 / 8 颗箭头。 | `js/engine/generate.js:103`、`js/engine/generate.js:112`、`js/engine/generate.js:121` |
-| **不承诺界面手感与美术** | 浏览器闸只认三种证据：DOM 矩形与文本、画布像素、真指针事件读数。它证的是「玩家拿到了什么」，不是「好不好看」。`.hidden`、类名、注释里的意图一概不算证据。 | `tools/scenarios.js:5-8`、`tools/verify.sh:13-14` |
+| **不承诺界面手感与美术** | 浏览器闸只认三种证据：DOM 矩形与文本、画布像素、真指针事件读数。它证的是「玩家拿到了什么」，不是「好不好看」。`.hidden`、类名、注释里的意图一概不算证据。 | `tools/scenarios.js:6-9`、`tools/verify.sh:13-14` |
 | **不承诺 `score` 可跨引擎/跨盘比较** | 本仓唯一的 `score` 是 `pSet` 内部给候选动作排序用的 `rolesDone*2 + edgesDone`，它只是一个贪心键，没有任何一处把它当难度、质量或成绩输出。 | `js/engine/generate.js:42`、`js/engine/generate.js:85-87` |
 | **不承诺菜单外的档能出货** | 仓内复跑器 `tools/ceiling.mjs` 用**同一套出货默认值**（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`，`js/engine/generate.js:27-28`）打四颗**写死的** seed（`cl-14x14-0..3`、`cl-16x16-0..3`，不由日期派生）：本轮 2026-09-29 实测 **14×14 出货 0/4、16×16 出货 0/4**，八颗 seed 把 60 次换盘机会全部撞满；逐样本墙钟 14×14 `[3442 3131 3157 3407]` ms、16×16 `[4694 5540 5252 5772]` ms（load1 3.21→3.57，15 核，node v26.8.1），**每一颗都越过房子口径 2000 ms**。唯一废因仍是 PLATEAU（两档各累计 240 次），`COUNTER` 出现 0 次——`pSet` 推不到全解（`js/engine/generate.js:150`）就 continue，压根走不到认证计数那一步（`js/engine/generate.js:155`），所以卡的不是 DP 成本。这两批观测值不写回代码：代码里钉的是 `RECORD` 那两张表（`tools/ceiling.mjs:54-55`，14×14 `[3229 2983 3072 3131]`、16×16 `[4462 5283 5076 5546]`），C1 每次拿实测值去对**量级**（×[0.4, 3]）而不是逐位相等——复跑器每轮重测，锚只用来抓「机器或流水线变了」。⚠ 更早一版这里写的是「14×14 出 3/4、16×16 出 1/4、那颗 attempts 59/60、墙钟 `[633 1745 2961 3379]`」：那批数出自**仓外**的桌面筛探针（另一段 seed 空间，clone 之后重跑不出来），换成仓内这四颗 seed 就是 0/4——结论方向没变（只会更硬），文档以仓内可复跑的那份为准。现在这三档都不在菜单里（`js/engine/generate.js:35-40`）。 | `tools/ceiling.mjs:45-56`、`tools/ceiling.mjs:110-135`、`js/engine/generate.js:28` |
 | **不承诺 12×12 在任何机器上都在线内**（它就是因此被请出菜单的那一档） | 同一个 seed 空间、同一套默认值、同一个判据：本机四次复跑 p95 读成 1248 / 1254 / 1266 / 1342 ms（负载 2.74~4.79，15 核），线内；CI runner（2 核 ubuntu-latest，load1 0.82）读成 **p95 2985 ms**，线外（`tools/balance.mjs:67` 那条绝对值线不动）。菜单顶档因此回到 10×10：本机 p95 208 ms（剂量表那一趟）/ 201 ms（平衡闸那一趟）、runner 458 ms，两台机器都在线内。**降级不等于免责**：12×12 仍被剂量表与 `tools/balance.mjs` 逐轮量（写下这句那一轮 16/16 出货、p95 1266 ms 照旧打印；包络改完之后本机两趟读 1253 / 1394 ms，见 §五），只是 `inMenu: false` ⇒ 下拉框里选不到；而「缩菜单躲门」这件事本身被 B6b 钉住——菜单顶档面积不许小于 10×10（`tools/balance.mjs:226-231`），要再往下缩就得同时改判据、README 与 DESIGN 那两张梯级表。存档里已有的 12×12 那一局照旧续得上（`js/ui/puzzle.js:21-24`）。 | `js/engine/generate.js:35-40`、`tools/balance.mjs:63-67`、`tools/balance.mjs:218-235`、`tools/ceiling.mjs:33-37` |
@@ -265,21 +265,80 @@ band 用 **`[max(1, floor(med × 0.4)), max(lo + 1, ceil(p95 × 1.6))]`**；两�
 （`tools/balance.mjs:218-235`），12×12 那行则由 B6 的循环改成一行「档外」读数打印
 （`tools/balance.mjs:233-235`）。
 这张表现在**只活在 `tools/balance.mjs` 里**，没进 `js/engine/generate.js` 的档位表——
-这一轮动档位表只动了 `inMenu` 这个开关（w/h 与出货默认值一根没改），浏览器闸那 288 条断言照例重跑了一遍，
+这一轮动档位表只动了 `inMenu` 这个开关（w/h 与出货默认值一根没改），浏览器闸照例整趟重跑了一遍
+（条数是每一轮现量的，写在下面第六节那一趟的读数里，不在这里复述），
 而且菜单形状本身成了 boot 场的一条新断言：下拉里能选到的必须逐字等于引擎 `TIERS` 里 `inMenu` 的那几档
-（`tools/scenarios.js:439-446`）。
+（`tools/scenarios.js:447-454`）。
 
 `npm run ceiling` **不进 CI**：它是量天花板的，不是门，写进 CI 就变成每天重测一次结论。
 本轮 23 条断言、红 0：参照批（菜单顶档 10×10 六颗 seed）现量 p95 384 ms，14×14 / 16×16 仍 0/4 且
 颗颗撞满 60 次换盘，八颗逐样本 3131~3407 / 4694~5772 ms，全部越过房子口径 2000 ms。
 
-`bash tools/verify.sh` 本轮 ALL GREEN：288 条浏览器断言、红 0——
-root 9 场 120 条、prefix 9 场 120 条、mobile 3 场 48 条；
-八场逐场为 boot 20 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14
-（boot 在同一条腿里连跑两次，所以 9 场 = 这八场 + 第二次 boot）；
-部署名单腿 39 条 404（`tools/` 33 个文件含闸自己落的 shots + 仓库根的 `*.md`/`package.json`/工作流）
+`bash tools/verify.sh` 本轮 ALL GREEN（退出码 0，日志 `_tmp-yajilin-verify-full-r3.log`；
+这一趟跑在改完文件之后的树上，上面那些条数就是它打印的）：
+334 条浏览器断言、红 0——
+root 10 场 143 条、prefix 10 场 143 条、mobile 3 场 48 条；
+九场逐场为 boot 20 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14 / pause 23
+（boot 在同一条腿里连跑两次，所以 10 场 = 这九场 + 第二次 boot）；
+两条桌面腿的逐场条数**逐条相同**（pause 都是 23 条、`fs` 都读到 `entered`），这一格是本轮现量的，
+不是「两趟都写了 ALL GREEN」；
+部署名单腿 44 条 404（口径：`find tools -type f` 的 38 个 + 仓库根 6 个名单外文件；
+`tools/` 那 38 个里含闸自己落的 21 张 shots，所以这一格会随复跑变，DESIGN 第七节记着这件事）
 + 名单内 5 条 200；三条腿的控制台异常行数各 0。
 汇总门与「少一条腿就红」的地板在 `tools/verify.sh:443-465`。
+上面那些 `_tmp-*` 名字是**本机的 scratch 台账**，不住在仓里（`.gitignore:8` 把 `_tmp-*` 整条挡在门外，
+DESIGN 第七节写着这条口径）：写在这里是为了让读数有出处，而不是让读者去仓库里找它们。
+
+### pause 场：顶栏那三颗按钮点下去要发生它们写着的那件事（本轮新增）
+
+引擎里早就有一套真暂停（`js/main.js:69` 的 `setPaused`）和一个真全屏开关（`js/main.js:640` 的
+`bindFullscreen`），顶栏上也真有 `#btn-pause` / `#btn-fullscreen` 两颗按钮——可是 `tools/scenarios.js`
+里那张手写的常显控件名册有 `btn-motion`，偏偏没有这两颗，于是那八场场景一次都没点过它们。后果不是"少测两条"这么简单：
+`js/main.js:311-312` 那句「换一局一定在走」的注释、`js/main.js:616` 那三行「—— 暂停：给闸台读的那张脸 ——」
+（`get paused()` / `setPaused` / `simClock`）在整个仓里没有任何一处代码为它们担保。
+
+这一场只读玩家拿得到的东西：按钮上的文字与 `aria-pressed`、`document.fullscreenElement`、
+`#board-wrap` 的矩形与视口尺寸，加上 `simClock()` 那个正在推进的数（`paused` 只当第三个证人用）。
+三句话有硬判据：
+
+1. **暂停是真冻结**：700 ms 之后 Δ 恰好等于 0，不是"变慢了"。
+2. **恢复的第一帧不倒灌**：跳幅上界 200 ms 是一个固定余量，不是速度预算——`setTimeout` 从不提前，
+   机器慢只会让等待更长，把机器噪声算进跳幅就是在罚机器而不是罚代码。
+3. **暂停中换一局，按钮与时钟不许各说各话**：这一条就是 `js/main.js:311-312` 那句注释的台架。
+
+全屏那条腿读的是**焦点**：headless Chrome 里 `Element.requestFullscreen()` 要一次真实的用户激活，
+而一个不在最上层的标签页 `document.hasFocus()` 是 false、会被直接拒——两种结局的断言条数不一样。
+所以 `tools/playtest.cjs` 给 scenario 那一次求值带上 `userGesture`，并在求值前 `Page.bringToFront`；
+进不去的那一支也不是空跑：按钮必须被禁用、`title` 必须是一句人话（`/主屏幕|不提供/`）、
+而且不许假装按下。
+
+七把刀 + 一颗阳性对照，跑在定稿树的**副本**上（`python3 _tmp-yajilin-pause-knife-r2.py`，
+台账 `_tmp-yajilin-pause-knife-r2.log`，逐把都点名了它该弄红的判据）：
+
+| 刀 | 破的那句承诺 | 结果 |
+|---|---|---|
+| control | 定稿树 | boot+pause 43 条、红 0 |
+| K1 | 摘掉 `setPaused` 里停表那两行 | `暂停把时钟冻死` 红（`frozen` 读 703 ms） |
+| K2 | 恢复时把 `startedAt` 往前挪 9 s | `恢复的第一帧不倒灌` 红（`jump` 读 9000） |
+| K3 | 删掉全屏那颗的 `click` 监听 | `进不去全屏时给一句人话理由` 红（`fs` 落进 `unsupported` 支） |
+| K4 | 把 `#btn-fullscreen` 改名 | boot 的名册 + pause 的四条一起红，5 条点名、**没有一条被崩掉** |
+| K5 | 摘掉 `newGame` 的解暂停 | `暂停中换一局，新局一定在走` 红 |
+| K6 | `aria-pressed` 写反 | 两条标签红 + 那条一致性红 |
+| K7 | 把 `#btn-pause` 改名 | 5 条点名红；这一刀砸的其实不是判据而是整张页面 |
+
+K7 是本轮的第二个发现：`js/main.js:549` 那句 `$('btn-pause').addEventListener(...)` 没有守卫，
+空 id 会让 app 死在模块求值里、`window.yajilin` 从来没被赋值（`#btn-fullscreen` 那一颗是有守卫的，
+`js/main.js:641` 找不到就直接不装）。这一刀第一次跑出来的不是点名红，而是 boot 场整场 THROW
+（`Cannot read properties of undefined (reading 'game')`）——红落在异常文本上，读的人得去猜是哪条腿。
+所以闸台自己补了两处：boot 的 `const a = A()` 改成 `A() || {}`，pause 的名册两条挪到需要 surface 的腿之前、
+再加一条 `pause: 暂停那张脸在`。app 侧那句无守卫的 `addEventListener` **本轮没动**：改它要么让按钮静静消失、
+要么改产品行为，都不属于补闸的范围，先把它记在这里。
+
+同一轮里还有一件只有本机碰得到的事：`bash tools/verify.sh` 在 macOS 上跑到最后一句是
+`=== FAILURES ABOVE ===`（腿 1-5 全绿）。`tools/deploy-set-selftest.mjs` 用 `os.tmpdir()` 造影子副本，
+而 `tools/verify.sh:39` 在 Darwin 上把 `TMPDIR` 指到本仓的 `_tmp-mk/`，于是 `cpSync` 当场
+`ERR_FS_CP_EINVAL`「Cannot copy <repo> to a subdirectory of self」。CI runner 的 `TMPDIR` 是 `/tmp`，
+那一趟照过——这道 2026-10-04 落地的闸从没在这台机器上跑通过。账与修法在 DESIGN 第七节。
 
 ---
 
@@ -308,7 +367,7 @@ tools/balance.mjs          平衡闸：出货墙钟定价（budgetMs / band）�
 tools/ceiling.mjs          档外天花板：14×14 / 16×16 的复跑器（不进 CI）
 tools/reference.mjs        暴力枚举器（计数器的第二台机器）
 tools/verify.sh            六条腿的生命周期（一条判据都不在这里）
-tools/scenarios.js         八场判据（只认 DOM 矩形 / 画布像素 / 真指针）
+tools/scenarios.js         九场判据（只认 DOM 矩形 / 画布像素 / 真指针读数）
 tools/playtest.cjs         裸 CDP 驱动（Node 22 全局 WebSocket/fetch）
 ```
 

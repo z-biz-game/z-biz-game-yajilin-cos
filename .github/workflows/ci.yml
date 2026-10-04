@@ -154,7 +154,7 @@ jobs:
           legs = {}
           for m in re.finditer(r'\[(root|prefix|mobile)\] (\S+)\s+(\d+) checks, (\d+) failed', log):
               legs.setdefault(m.group(1), []).append((m.group(2), int(m.group(3)), int(m.group(4))))
-          need = {'root': 9, 'prefix': 9, 'mobile': 3}
+          need = {'root': 10, 'prefix': 10, 'mobile': 3}
           bad = []
           for leg, want in need.items():
               got = legs.get(leg, [])

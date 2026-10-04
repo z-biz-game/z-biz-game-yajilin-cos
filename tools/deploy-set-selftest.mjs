@@ -21,10 +21,20 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skip = (rel) => rel.split('/').some((s) => s === '.git' || s === 'node_modules' || s === '.qoder' ||
   s.startsWith('_tmp-'));
 const COPIES = [];
+// 影子副本必须落在被测目录**之外**。macOS 上 verify.sh:39 把 TMPDIR 指到本仓的 _tmp-mk/
+// （为的是 Chrome profile 和替身根不被 /tmp 清掉），于是 os.tmpdir() 成了 ROOT 的子目录，
+// 下面那句 cpSync 当场 EINVAL：「Cannot copy <repo> to a subdirectory of self」。一腿未跑、
+// 整道闸以 rc=1 收场——CI runner 的 TMPDIR 是 /tmp，所以这一类坏只在设备上出。
+// 这份临时目录由本进程自己创建、自己在 :313 删掉，不留证据，所以退回 /tmp 不违反"scratch 不放 /tmp"。
+const TMP_BASE = (() => {
+  const t = fs.realpathSync(os.tmpdir());
+  const r = fs.realpathSync(ROOT);
+  return t === r || t.startsWith(r + path.sep) ? fs.realpathSync('/tmp') : t;
+})();
 function fresh() {
   // 每刀一个副本，副本留着：基线副本要当靶子源用到最后（早先每 fresh() 删上一个，
   // X7 挑靶子时基线已经不在盘上了，于是"没有靶子"被当成了这一仓的形状）。
-  const w = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-selftest-'));
+  const w = fs.mkdtempSync(path.join(TMP_BASE, 'ds-selftest-'));
   COPIES.push(w);
   const dst = path.join(w, 'repo');
   fs.cpSync(ROOT, dst, { recursive: true, filter: (src) => !skip(path.relative(ROOT, src) || '') });

@@ -14,8 +14,8 @@
 //
 // ⚠ 下面 MEASURED 那张表是**量出来的**，不是感觉：一台 laptop（15 核、node v26.8.1）加 CI
 //   runner 上的三趟读数，一格一趟真实跑（口径与「为什么钉 runner」写在那张表的表头）。SAMPLES=16，收尾行每次重念负载。
-//   它**没有**进 js/engine/generate.js 的档位表：那张表一动（哪怕只动 inMenu 那个开关），浏览器闸那 288 条
-//   断言就得重跑——2026-09-29 那一轮真的重跑了一遍（账在 DESIGN 第七节）。band/budgetMs 只活在本文件。
+//   它**没有**进 js/engine/generate.js 的档位表：那张表一动（哪怕只动 inMenu 那个开关），浏览器闸就得
+//   整趟重跑（条数每轮现量，读数住在 README 第六节那一趟；2026-09-29 那一轮真的重跑过，账在 DESIGN 第七节）。band/budgetMs 只活在本文件。
 import os from 'node:os';
 import { performance } from 'node:perf_hooks';
 

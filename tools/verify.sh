@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一把梭的门禁：Node 那几条腿 → 起服 → 真 Chrome + 真指针跑八场 → 截图 → 两种 URL 形态
+# 一把梭的门禁：Node 那几条腿 → 起服 → 真 Chrome + 真指针跑九场 → 截图 → 两种 URL 形态
 # → 部署名单的反证 → 移动形态 → 结论。生命周期归这个脚本所有：它起服务器、用自己的
 # --user-data-dir 拉 Chrome、跑场景、把两个都收掉；任何一条断言红就得是非零，而且报得出红在哪一条。
 #
@@ -289,7 +289,7 @@ echo "$SERVED" | grep -q 矢仓林 || { echo "$BASE 不是矢仓林（title 里�
 echo "$SERVED" | grep -qi yajilin || { echo "$BASE 不是矢仓林（title 里没有 Yajilin）" >&2; exit 2; }
 echo "identity: $(echo "$SERVED" | grep -o '<title>[^<]*</title>' | head -1) @ $BASE"
 
-DEFAULT_SCEN="boot boot render play marks resume wrong win hint"
+DEFAULT_SCEN="boot boot render play marks resume wrong win hint pause"
 : "${SCENARIOS:=$DEFAULT_SCEN}"
 
 # ── 腿 2：根形态 http://127.0.0.1:5326/ ──────────────────────────────────────────
@@ -444,16 +444,16 @@ bad = []
 for r in rows:
     if int(r[2]) == 0:
         bad.append('%s/%s 零断言' % (r[0], r[1]))
-known = {'boot', 'render', 'play', 'marks', 'resume', 'wrong', 'win', 'hint'}
+known = {'boot', 'render', 'play', 'marks', 'resume', 'wrong', 'win', 'hint', 'pause'}
 for r in rows:
     if r[1] not in known:
         bad.append('不认识的场景名 %s/%s（场景表漂了还是 __ng 少了一个？）' % (r[0], r[1]))
-# 根形态与前缀形态这两条腿都必须含那八场；少了就是「浏览器闸只跑了一遍却被写成两遍」。
+# 根形态与前缀形态这两条腿都必须含那九场；少了就是「浏览器闸只跑了一遍却被写成两遍」。
 for leg in ('root', 'prefix'):
     rs = by.get(leg, [])
     if rs:
         got = {r[1] for r in rs}
-        for need in ('boot', 'render', 'play', 'marks', 'resume', 'wrong', 'win', 'hint'):
+        for need in ('boot', 'render', 'play', 'marks', 'resume', 'wrong', 'win', 'hint', 'pause'):
             if need not in got:
                 bad.append('%s 腿没跑 %s 场' % (leg, need))
     else:

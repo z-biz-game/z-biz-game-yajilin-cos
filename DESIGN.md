@@ -188,17 +188,17 @@ B6b 菜单形状（防降级），本轮 checks=42 fails=0）。两个式子逐�
 | 腿 | 断言什么 | 本轮读数 | 出处 |
 |---|---|---|---|
 | 1 unit | 上面那六套 + 三道静态门 | 7 行 RESULT、741 条断言、红 0、退出码 0 | `tools/verify.sh:241-271` |
-| 2 root | 根形态 `http://127.0.0.1:5326/` 上八场真指针 | 9 场 120 条断言 红 0 | `tools/verify.sh:295-308` |
-| 3 prefix | Pages 前缀形态（替身根由 symlink 按部署名单搭） | 9 场 120 条 红 0 | `tools/verify.sh:311-339` |
-| 4 deploy-list | 名单外的必须 404、名单内的必须 200 | 39 条 404 + 5 条 200 | `tools/verify.sh:341-372` |
+| 2 root | 根形态 `http://127.0.0.1:5326/` 上九场真指针 | 10 场 143 条断言 红 0 | `tools/verify.sh:295-308` |
+| 3 prefix | Pages 前缀形态（替身根由 symlink 按部署名单搭） | 10 场 143 条 红 0 | `tools/verify.sh:311-339` |
+| 4 deploy-list | 名单外的必须 404、名单内的必须 200 | 44 条 404 + 5 条 200 | `tools/verify.sh:341-372` |
 | 5 mobile | 390×844 @ dpr3 的 **CDP 会话内**覆写 | 3 场 48 条 红 0 | `tools/verify.sh:380-399` |
 | 6 live | 线上真部署那份字节（要网络） | 本轮没打 | `tools/verify.sh:402-424` |
-| 汇总 | 腿×场的并表 + 地板判定 | 合计 288 条浏览器断言 红 0，ALL GREEN | `tools/verify.sh:443-465` |
+| 汇总 | 腿×场的并表 + 地板判定 | 合计 334 条浏览器断言 红 0，ALL GREEN | `tools/verify.sh:443-465` |
 
-八场的逐场条数（root，本轮）：boot 20 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14。
-`root` 是 **9 场**而不是 8 场，因为场景表写的是 `boot boot render play marks resume wrong win hint`
+九场的逐场条数（root，本轮）：boot 20 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14 / pause 23。
+`root` 是 **10 场**而不是 9 场，因为场景表写的是 `boot boot render play marks resume wrong win hint pause`
 （`tools/verify.sh:292`）——boot 在同一条腿里连跑两次，第二次的 `performance.timeOrigin` 必须
-**严格大于**第一次（`tools/verify.sh:150-152`、`tools/scenarios.js:457-458`）。
+**严格大于**第一次（`tools/verify.sh:150-152`、`tools/scenarios.js:465-466`）。
 这一条专门抓「片段导航冒充重载」：`BASE#expect=` 那种同文档跳转连 JS 上下文都不换，
 读数照样「对」，但玩家从来没有真的重载过页面。
 `mobile` 只跑与形状有关的三场（boot / render / play，`tools/verify.sh:391`），
@@ -216,17 +216,17 @@ Pages 上线的站点 404。** 原因是 Pages 把部署目录挂在 `/<仓库�
 并由 `.github/workflows/pages.yml:50` 那一步在产物侧反向核对「名单外的文件不许进 `_site`」。
 `index.html:5-7` 把「不写 `<base>`、资源全走相对路径」写成显式约定，
 浏览器侧则由 boot 场逐条读回每个子资源的 `responseStatus`
-（`tools/scenarios.js:453`）——写死的根路径在前缀腿就是死在这条断言上，而不是死在人工报修。
+（`tools/scenarios.js:461`）——写死的根路径在前缀腿就是死在这条断言上，而不是死在人工报修。
 
 第 4 条腿是第 3 条腿的**反证**：光有「前缀下页面能打开」还不够，必须同时证明
 `tools/`、仓库根的 `*.md`、`package.json`、工作流文件在这棵根下**够不到**
-（本轮 39 条 404：`tools/` 那 33 个文件里含闸自己落的 shots，所以这一格会随复跑变，口径见 README 第六节），并且反向要求名单内 5 条真的 200
+（本轮 44 条 404：`tools/` 那 38 个文件里含闸自己落的 21 张 shots，所以这一格会随复跑变，口径见 README 第六节），并且反向要求名单内 5 条真的 200
 （`tools/verify.sh:353-372`）——没有后半句，那一串 404 只是因为整棵树都在 404。
 
 汇总腿的地板（`tools/verify.sh:443-461`）同样是为「假绿」写的：
-零断言的场景直接红、场景名不在那张八场集合里红（场景表漂了或 `__ng` 少装一个都会这样）、
-`root` 与 `prefix` 两条腿**都必须含那八场**（少了就是「浏览器闸只跑了一遍却被写成两遍」）、
-总断言数 `< 60` 也红。CI 那一侧再按 `{'root': 9, 'prefix': 9, 'mobile': 3}` 数一遍场数
+零断言的场景直接红、场景名不在那张九场集合里红（场景表漂了或 `__ng` 少装一个都会这样）、
+`root` 与 `prefix` 两条腿**都必须含那九场**（少了就是「浏览器闸只跑了一遍却被写成两遍」）、
+总断言数 `< 60` 也红。CI 那一侧再按 `{'root': 10, 'prefix': 10, 'mobile': 3}` 数一遍场数
 （`.github/workflows/ci.yml:138-148`）。
 
 还有两条容易漏的「不是断言的断言」：每条腿的控制台里但凡出现 `[EXCEPTION]` 或 `[log:error]`
@@ -277,7 +277,7 @@ runner 的 workspace 根本身就 76 字节，再加 `_tmp-mk/tmp.XXXXXXXXXX/Sin
 而短路径在那里是硬要求）。`tools/verify.sh:209-210` 的注释跟着改口，`:211` 那句
 `UDD=$(mktemp -d -p "$TMPDIR")` 一字未动——它现在在 Linux 上自然拿到 `/tmp/tmp.XXXXXXXXXX`，
 socket 全路径 40 字节上下。**判据一根没动**：本机复跑 `bash tools/verify.sh` 在那一趟是
-283 条浏览器断言、红 0、ALL GREEN（菜单那轮之后同一趟读成 288，见上面那张腿表），三条腿的 profile 依旧各是新造的（本轮实测
+283 条浏览器断言、红 0、ALL GREEN（菜单那轮之后同一趟读成 288；上面那张腿表是 pause 那一轮的读数，两趟不同轮），三条腿的 profile 依旧各是新造的（本轮实测
 `_tmp-mk/tmp.K0dB54CqwS` / `tmp.aV2XnWPahq` / `tmp.pP5rYI6o1L`），四行改动全是行内替换、
 `verify.sh` 仍是 468 行，上面那张腿表与 `:236-243 / :265 / :443-465` 一根没漂。
 
@@ -287,6 +287,22 @@ socket 全路径 40 字节上下。**判据一根没动**：本机复跑 `bash t
 把 TMPDIR 收进仓里时**只在 macOS 上验过**带出来的，所以修也只在这一个仓修。
 教训写在这里而不是只写在 commit 里：一条只在本机验过的路径策略，到了另一种机器上就是一条
 新的红，而它红的地方（浏览器腿）恰好是最不像"路径问题"的地方。
+
+同一根 `TMPDIR` 线在本轮又咬了本机一口，只是这次咬的不是浏览器腿：`tools/deploy-set-selftest.mjs`
+（那道部署集闸的阴性自证）用 `os.tmpdir()` 造影子副本再 `cpSync` 整仓，而 Darwin 上
+`TMPDIR=$HERE/_tmp-mk` 让目的地落在**被测目录自己里面**，`cpSync` 当场
+`ERR_FS_CP_EINVAL`「Cannot copy `<repo>` to a subdirectory of self」。于是腿 1-5 全绿、
+最后一句却是 `=== FAILURES ABOVE ===`、退出码 1。CI runner 的 `TMPDIR` 是 `/tmp`，那一趟一直过，
+所以这道 2026-10-04 落地的闸在这台机器上**一次都没跑通过**，而没人注意到——本地整闸的 rc 被
+前面几条腿的绿撑着，只有最后一行是红的。
+修法不动 `tools/verify.sh:39`（那条平台策略是对的，本轮三个 Chrome profile 又确实活在 `_tmp-mk/`
+直到跑完）：让台架自己保证副本在树外——`tools/deploy-set-selftest.mjs:29-33` 的 `TMP_BASE`
+一旦发现 `os.tmpdir()` 落在 `ROOT` 之内就退回 `/tmp`，副本由本进程创建、同文件 `:323` 删掉，
+不是要留下的证据，所以不受"scratch 别放 /tmp"那条约束。判据一根没动：
+`TMPDIR=$PWD/_tmp-mk node tools/deploy-set-selftest.mjs` 从 rc=1 变 rc=0（本轮实测，
+`_tmp-yajilin-dsselftest-r1.log`），X1-X13 每一刀的点名红与 `TMPDIR=/tmp` 那一趟逐字相同。
+上一段那句教训的另一半在这里：把 temp 根收进仓里，仓里**每一个**用 `os.tmpdir()` 的脚本都跟着搬了家；
+只验"Chrome 起不起来"那一条腿不够，每个搬了家的脚本都得自己在两种 `TMPDIR` 下各跑一遍。
 
 ### 第二红：socket 那一关过了，runner 立刻露出它一直藏着的下一件事
 
@@ -448,7 +464,7 @@ P10:0 / P10:0 / P10:0 / P10:0，见 `README.md` 第三节的规则命中口径�
 旧笔迹全被指纹对账丢掉（这段理由就写在 `js/ui/puzzle.js:19-24` 的注释里）。
 所以「菜单」与「引擎表」是两个东西：`js/ui/puzzle.js:17` 的 `SIZES` 只含 `inMenu` 的那几档，
 `js/main.js:530-537` 只渲染前者，而 boot 场把这条边界钉成浏览器断言——下拉里的档位必须逐字等于
-`TIERS.filter(inMenu)`、且不少于 3 档（`tools/scenarios.js:439-446`）。这条断言是双向的：
+`TIERS.filter(inMenu)`、且不少于 3 档（`tools/scenarios.js:447-454`）。这条断言是双向的：
 引擎降了档而界面还留着 ⇒ 红（玩家点到一句拿不到货的承诺）；界面自己多列一档 ⇒ 也红。
 
 ### 第二格（2026-10-04）：B1 那条线被机器咬了，改的是钉法不是公式
@@ -523,7 +539,7 @@ PLATEAU 累计**（确定量，逐颗对死）与逐样本墙钟（×[0.4, 3]，
 ## 八、门禁覆盖不到的地方（也就是本文件不许越界说的话）
 
 - **手感与美术**：浏览器闸只有三种证据——DOM 矩形与文本、画布像素、真指针读数
-  （`tools/scenarios.js:5-8`）。它能证「画出来了 / 点得到 / 说的和判的一致」，
+  （`tools/scenarios.js:6-9`）。它能证「画出来了 / 点得到 / 说的和判的一致」，
   证不了「好用」。`tools/shots/*.png` 是给人看的旁证，**不参与判定**
   （只有绿的场才落盘：`tools/verify.sh:174-179`）。
 - **线索最少**：`pDig` 是四趟贪心 + 前置过滤，本轮每盘进入复核的箭头 med 只有 1–2 条，

@@ -1,6 +1,7 @@
-// 浏览器里的场景套件，由 tools/playtest.cjs 注入真实页面后跑。八场：
-// boot / render / play / marks / resume / wrong / win / hint（verify.sh 里 marks→resume 是成对的，
-// hint 排最后：它会赢一局，而赢会 clearResume，排在前面就把 resume 那场的存档吃掉了）。
+// 浏览器里的场景套件，由 tools/playtest.cjs 注入真实页面后跑。九场：
+// boot / render / play / marks / resume / wrong / win / hint / pause（verify.sh 里 marks→resume 是成对的，
+// hint 排最后因为它会赢一局、而赢会 clearResume；pause 排在 hint 之后是因为它自己开局一局
+// ——顶栏那三颗按钮的判据不依赖任何一场留下的状态）。
 //
 // 这个仓最容易出的事故恰好是「引擎里对、屏幕上错」：箭头画反方向、格线只在注释里没真的画、
 // 胜利卡片 display:grid 盖掉 [hidden] 还在吃点击、铅笔把答案提前画在盘上。所以这里只认三种证据：
@@ -313,8 +314,12 @@
   const GATE_KEY = 'yajilin.gate.marks'; // app 从不读这个键（它只认 yajilin.save.v1）
 
   // 控件分两批：开局就能看到的，与只有赢之后才存在的（胜利卡片里那两个）。
+  // btn-pause / btn-fullscreen 是后补进来的：引擎里早就有一套真暂停（js/main.js:69 setPaused）
+  // 和一个真全屏开关，顶栏上也真有这两颗按钮，可是这张名册没写它们——于是八场场景一次都没点过，
+  // 「暂停冻住时钟」「全屏按钮绑在本页 HUD 上」这两句话在整个仓里没有任何一处代码为它担保。
   const ALWAYS_IDS = ['size-select', 'btn-mode-loop', 'btn-mode-black', 'btn-mode-cut', 'btn-mode-erase',
     'btn-hint', 'btn-undo', 'btn-clear', 'btn-new', 'btn-reset', 'btn-motion',
+    'btn-pause', 'btn-fullscreen',
     'board', 'state-line', 'verify-line', 'pencil-list', 'stat-seed', 'stat-verify', 'stat-pencil'];
   const WIN_IDS = ['btn-again', 'btn-close-veil', 'win-meta'];
 
@@ -350,7 +355,10 @@
   const ng = {};
   // ── 1. boot：页面真的是一张能玩的盘，而不是一句「有个 app」──────────────────
   ng.boot = async () => {
-    const a = A();
+    // app 死在模块求值里（例如 js/main.js:549 那种没有守卫的 addEventListener 撞上空 id）
+    // 时 window.yajilin 根本不存在：直接读 a.game 会让整场 THROW，两条本该点名的红变成一句
+    // "Cannot read properties of undefined"。给一个空壳，红就落在它们自己的名字上。
+    const a = A() || {};
     for (let i = 0; i < 60 && (!a.game || a.state !== 'ready'); i++) await wait(50);
     ck('boot: window.yajilin 起来了且 state=ready（启动期一条异常都没有）', a && a.game && a.state === 'ready', `state=${a && a.state}`);
     ck('boot: 加载与首帧没有未捕获异常/未处理 rejection', errs.length === 0, errs.slice(0, 3).join(' | '));
@@ -1272,6 +1280,136 @@
         .filter(([, n]) => n > 0).map(([r]) => r).filter((r) => !seenRules.has(r)).join(','),
       moves: g.moves, errs: st.errs.length,
     });
+  };
+
+  // ── 9. pause：顶栏那三颗按钮点下去，必须发生它们各自写着的那件事 ─────────────
+  // 这一场只读玩家拿得到的东西：按钮上的文字与 aria-pressed、document.fullscreenElement、
+  // 视口尺寸与画布矩形，外加引擎在 js/main.js:622 露给闸台的那张脸（simClock / paused）。
+  // 判据不读 drag/won 那一类内部旗标：paused 与 simClock 是**特意为量具开的口**（js/main.js:616
+  // 那句注释就是它的出生证明），以前一次都没人调用。
+  ng.pause = async () => {
+    const a = A();
+    // 找不到控件不许把后面几十条断言一起吃掉：id 被改名的话，这里要拿一颗游离替身接住，
+    // 让每一条都点名红出来，而不是在第一次 .click() 上抛 TypeError、整场空转成 0 条。
+    const STAND_IN = document.createElement('button');
+    const el = (id) => document.getElementById(id) || STAND_IN;
+    const lab = (id) => {
+      const b = el(id);
+      return {
+        text: (b.textContent || '').trim(),
+        pressed: b.getAttribute('aria-pressed'),
+        title: b.getAttribute('title') || '',
+        aria: b.getAttribute('aria-label') || '',
+        disabled: !!b.disabled,
+      };
+    };
+
+    // 名册两条只读 DOM，所以放在要 surface 的腿之前：app 死在启动阶段时它们仍然点得出名字。
+    const topIds = [...document.querySelectorAll('.top-actions button')].map((b) => b.id).join(',');
+    eq('pause: 顶栏按钮名册逐字对上（顺序、条数、id 全算）', topIds, 'btn-pause,btn-motion,btn-fullscreen');
+    const nameless = ['btn-pause', 'btn-motion', 'btn-fullscreen'].filter((id) => {
+      const l = lab(id);
+      return !l.text && !l.title && !l.aria;
+    });
+    ck('pause: 三颗按钮每一颗都有玩家读得出来的名字（文字 / title / aria-label 至少一样）', nameless.length === 0, nameless.join(','));
+
+    if (!a || typeof a.simClock !== 'function' || typeof a.newGame !== 'function') {
+      ck('pause: 暂停那张脸在（window.yajilin 的 simClock / newGame 读得到）', false,
+        `surface=${a && typeof a.simClock}/${a && typeof a.newGame}`);
+      return report({ fatal: 'no surface' });
+    }
+    const g = await a.newGame({ sizeKey: '6x6' });
+    await wait(80);
+    if (!g) { ck('pause: 出得了盘', false, 'newGame 返回空'); return report({ fatal: 'no board' }); }
+
+    // 先要"在走"，否则下面"停下来"那句是一句空话：一个从没跑过的表，暂停前后都是 0。
+    const advance = async (ms) => { const t0 = a.simClock(); await wait(ms); return a.simClock() - t0; };
+    const running = await advance(320);
+    ck('pause: 没暂停时时钟在走（320 ms 的等待至少推进 150 ms）', running >= 150, `Δ=${running}`);
+    eq('pause: 开局按钮写着「暂停」、没被按下', `${lab('btn-pause').text}/${lab('btn-pause').pressed}`, '暂停/false');
+
+    el('btn-pause').click();
+    await wait(40);
+    eq('pause: 点一下之后按钮改口「继续」、aria-pressed 变真', `${lab('btn-pause').text}/${lab('btn-pause').pressed}`, '继续/true');
+    const frozen = await advance(700);
+    eq('pause: 暂停把时钟冻死（700 ms 之后 Δ 恰好是 0，不是「变慢了」）', frozen, 0);
+    ck('pause: 界面冻住的那一刻引擎自己也说在暂停（按钮不是只改了个文字）', a.paused === true, `paused=${a.paused}`);
+
+    // 恢复那一瞬最坏的坏法是把暂停期间的墙钟一次性灌进来：表从 12 s 跳到 19 s。
+    // 上界只按"跳幅相对刚才冻住的时长"来判，不按速度预算判——setTimeout 从不提前，
+    // 机器慢只会让等待更长，把它算进跳幅就是在罚机器而不是罚代码。
+    const atUnpause = a.simClock();
+    el('btn-pause').click();
+    const jump = a.simClock() - atUnpause;
+    ck('pause: 恢复的第一帧不倒灌暂停期间的墙钟（刚才冻了 700 ms，跳幅必须远小于它）', jump < 200, `松手瞬间跳了 ${jump} ms`);
+    eq('pause: 松开之后按钮回到「暂停」、aria-pressed 回假', `${lab('btn-pause').text}/${lab('btn-pause').pressed}`, '暂停/false');
+    const resumed = await advance(220);
+    ck('pause: 恢复后时钟重新按墙钟走（不是一句只改了标签的假恢复）', resumed >= 50, `Δ=${resumed}`);
+
+    // js/main.js:311-312 那句注释承诺「换一局一定在走」。这一条就是它的台架：带着暂停换一局，
+    // newGame 若不解暂停，界面会显示「继续」而表一动不动——按钮与时钟各说各话，谁都不算红。
+    el('btn-pause').click();
+    await wait(30);
+    const g2 = await a.newGame({ sizeKey: g.sizeKey });
+    await wait(80);
+    const afterNew = { board: !!g2, text: lab('btn-pause').text, pressed: lab('btn-pause').pressed, flag: a.paused, moved: await advance(300) };
+    ck('pause: 暂停中换一局，新局一定在走（按钮与时钟不许各说各话）',
+      afterNew.board && afterNew.text === '暂停' && afterNew.pressed === 'false' && afterNew.flag === false && afterNew.moved > 0,
+      JSON.stringify(afterNew));
+
+    // 动效开关是个两态闩：点一下换态、再点一下原样回来。写法刻意与初值无关——
+    // 上一场（win/hint）留下的 reduceMotion 设置会经 Store 回到这颗按钮上，钉死文字就是钉死运气。
+    const m0 = lab('btn-motion');
+    el('btn-motion').click();
+    await wait(30);
+    const m1 = lab('btn-motion');
+    ck('pause: 动效开关点一下换态（文字与 aria-pressed 一起翻）',
+      m1.text !== m0.text && m1.pressed !== m0.pressed, `${m0.text}/${m0.pressed} → ${m1.text}/${m1.pressed}`);
+    el('btn-motion').click();
+    await wait(30);
+    const m2 = lab('btn-motion');
+    ck('pause: 再点一下原样回退，不留半态', m2.text === m0.text && m2.pressed === m0.pressed, `${m1.text}/${m1.pressed} → ${m2.text}/${m2.pressed}`);
+
+    // 全屏：两种结局都要有说法。headless Chrome 里 requestFullscreen 要一次真实的用户激活，
+    // 而一个不在最上层的标签页 hasFocus() 为 false、会被直接拒——所以 tools/playtest.cjs 给
+    // scenario 那次求值带 userGesture 并先 bringToFront；读回的分支由报告里的 fs 字段点名。
+    const fsBtn = el('btn-fullscreen');
+    const w0 = innerWidth;
+    const fsBefore = lab('btn-fullscreen');
+    ck('pause: 全屏按钮开局可点、写着「全屏」', !fsBefore.disabled && fsBefore.text === '全屏', `${fsBefore.text}/disabled=${fsBefore.disabled}`);
+    fsBtn.click();
+    await wait(400);
+    const inFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+    let fs = 'unsupported';
+    if (inFs()) {
+      fs = 'entered';
+      const on = lab('btn-fullscreen');
+      ck('pause: 进全屏之后按钮标成按下、文字改成「退出全屏」', on.pressed === 'true' && on.text === '退出全屏', `${on.text}/${on.pressed}`);
+      const overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      ck('pause: 全屏没有撑出横向滚动', overflow <= 1, `溢出 ${overflow} px`);
+      const wrap = document.getElementById('board-wrap');
+      const br = wrap.getBoundingClientRect();
+      ck('pause: 全屏里棋盘整个在视口内',
+        br.left >= -1 && br.top >= -1 && br.right <= innerWidth + 1 && br.bottom <= innerHeight + 1,
+        `[${Math.round(br.left)},${Math.round(br.top)}] ${Math.round(br.width)}×${Math.round(br.height)} 视口 ${innerWidth}×${innerHeight}`);
+      fsBtn.click();
+      await wait(400);
+      const off = lab('btn-fullscreen');
+      ck('pause: 再点一次是退出全屏，不是「再进一次」', !inFs(), '还在全屏里');
+      eq('pause: 退出后按钮文字回到「全屏」', off.text, '全屏');
+      eq('pause: 退出后 aria-pressed 回假', off.pressed, 'false');
+      ck('pause: 退出后 body 上的 fullscreen 类摘掉', !document.body.classList.contains('fullscreen'), [...document.body.classList].join(' '));
+      ck('pause: 退出后视口宽度复原', innerWidth === w0, `${w0} → ${innerWidth}`);
+    } else {
+      const off = lab('btn-fullscreen');
+      ck('pause: 进不去全屏时给一句人话理由（禁用 + title 说清为什么）',
+        off.disabled === true && /主屏幕|不提供/.test(off.title), `disabled=${off.disabled} title=${off.title}`);
+      ck('pause: 被拒绝的时候不假装按下', off.pressed !== 'true', `${off.text}/${off.pressed}`);
+    }
+    const errsNow = errs.length;
+    ck('pause: 这一场没有未捕获异常/未处理 rejection（全屏被拒要由 js/main.js:664 的 settle 吃掉）',
+      errsNow === 0, errs.slice(0, 3).join(' | '));
+    return report({ fs, focus: document.hasFocus(), fsEnabled: document.fullscreenEnabled, frozen, resumed, jump, afterNew: afterNew.moved, errs: errsNow });
   };
 
   w.__ng = ng;
