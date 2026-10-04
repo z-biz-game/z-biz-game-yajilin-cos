@@ -291,7 +291,7 @@ js/render/board.js         画布：读同一批数字
 js/store.js                localStorage 存档 + 指纹对账
 js/main.js                 装配层：按钮、指针、时钟、seed
 server.cjs                 零依赖静态服务（5326 / 5327）
-tools/check.mjs            node 侧总门（静态门 + 六套 + RESULT 数行） / tools/assemble-site / tools/deploy-set / tools/deploy-set-selftest
+tools/check.mjs            node 侧总门（静态门 + 六套 + RESULT 数行）
 tools/{rule,pencil,counter,golden}-test.mjs  四套单测
 tools/write-golden.mjs     冻结快照；--check 是只读对照
 tools/generator-probe.mjs  剂量表 + 红线
