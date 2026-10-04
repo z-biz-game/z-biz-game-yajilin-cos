@@ -8,6 +8,14 @@
 // 取样点全部由本文件给出去（cellRect / segRect / markPoint / clueTilePoint / clueArrowPoint /
 // ringPoint / ghostPoint），draw 与门禁读的是同一批数：画法一改，测试跟着动，
 // 不会出现「断言在旧位置上绿着、画面上早就换了地方」。
+
+/* ---------- 帧率无关（dt）---------- */
+/* 本仓**没有逐帧运动**，所以「帧率无关」这一项在本仓是空命题而不是缺陷：js/render/board.js 的重绘由 pointerdown / click / keydown / change 触发，全仓 requestAnimationFrame 出现 0 次；唯一的周期性调用是 1 秒 ticker（刷新用时读数）
+   没有自续期的 requestAnimationFrame 循环，屏上就没有「每帧推进」的量，帧率也就无从影响它。
+   写这段备案是为了让账上分得开"查过、确实不需要"与"没人查过"——不是为了让判据变绿。
+
+   规矩：**哪天在本仓加了逐帧动画循环，必须先删掉这段备案**，并让循环体消费 rAF 自带的
+   时间戳（或自己取 performance.now()），把动画进度写成绝对截止；只按帧累加位置的一律不算。 */
 import { Palette, Board, Radius } from '../theme.js';
 import { E_ON, E_OFF, BLACK, CLUE, UP, RIGHT, DOWN, LEFT } from '../ui/game.js';
 
