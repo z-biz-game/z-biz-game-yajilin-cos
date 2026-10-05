@@ -26,6 +26,7 @@ const SUITES = [
   ['behavior-test', ['tools/behavior-test.mjs']],
   ['keyboard-test', ['tools/keyboard-test.mjs']],
   ['asset-test', ['tools/asset-test.mjs']],
+  ['sw-test', ['tools/sw-test.mjs']],
 ];
 
 function walk(dir, out) {

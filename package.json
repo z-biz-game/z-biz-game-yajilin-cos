@@ -22,7 +22,8 @@
     "frames": "node tools/frame-rate-test.mjs",
     "behavior": "node tools/behavior-test.mjs",
     "keyboard": "node tools/keyboard-test.mjs",
-    "assets": "node tools/asset-test.mjs"
+    "assets": "node tools/asset-test.mjs",
+    "sw": "node tools/sw-test.mjs"
   },
   "keywords": [
     "game",
