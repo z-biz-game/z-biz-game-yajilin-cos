@@ -13,12 +13,18 @@
 //   ④ index.html / manifest.webmanifest / css / js 里引用到的每个 assets 路径都在盘上
 //      （Pages 挂在 /<仓库名>/ 前缀下，写死 "/assets/…" 或删文件都不会报错，只会静默 404）
 //
-// 另加两条口径：生成脚本必须是纯函数（同输入必同字节，实测复跑 31 张 sha256 逐字相同）；
-// 以及一把阴性对照——把「0 字节」「SVG 冒充」「实心占位」三种假样本喂给同一个判据，
-// 必须全部被抓到。抓不到就说明这把尺在空跑。
+// 另加一层「资产是脚本的产物」的可复现门：把 make_art.mjs 连同它的相对 import 链搬进临时目录
+// 真跑一遍，逐张与盘上字节比 sha256（实测 31/31 零漂移、~3.3s），并拿生成器自报的那一行
+// （名字 W×H BYTES sha12）与独立实算对账——自报数字与实际写下的字节不符同样判红。
+// 纯度与对拍各有阴性对照：注入 Math.random / Date.now 的两份复制品必须被纯度尺抓到；清单里
+// 任改一张的 sha 必须只报出那一张。抓不到就说明这把尺在空跑。
+// 下面那把假样本对照也一样：把「0 字节」「SVG 冒充」「实心占位」三种假样本喂进同一个判据，
+// 必须全部被抓到。
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import zlib from 'node:zlib';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
@@ -166,14 +172,116 @@ ok(/rel="manifest"/.test(html), 'index.html 没有 <link rel="manifest">');
 ok(/name="viewport"[^>]*viewport-fit=cover/.test(html), 'viewport 缺 viewport-fit=cover：CSS 里 env(safe-area-inset-*) 恒为 0');
 ok(/og:image/.test(html) && /og:image:width/.test(html), '缺 og:image / og:image:width');
 
-/* ---------- 生成脚本必须是纯函数 ---------- */
-const gen = fs.readFileSync(path.join(ROOT, 'assets/gen/make_art.mjs'), 'utf8');
-const genCode = gen.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-for (const [name, re] of [['Math.random', /Math\.random/], ['Date.now / new Date', /Date\.now|\bnew Date\b/], ['process.env', /process\.env/]]) {
-  ok(!re.test(genCode), `make_art.mjs 出现「${name}」：同输入不同字节，资产就不可复现`);
+/* ---------- 生成脚本必须是纯函数：静态纯度 + 真跑一遍逐字节对拍 ---------- */
+// 纯度尺（下面既拿它量真脚本，也拿它量两份「坏掉的复制品」做阴性对照）
+function purityBad(src) {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const hits = [];
+  for (const [name, re] of [['Math.random', /Math\.random/], ['Date.now / new Date', /Date\.now|\bnew Date\b/], ['process.env', /process\.env/]]) {
+    if (re.test(code)) hits.push(name);
+  }
+  return hits;
 }
-ok(/zlib|deflateSync/.test(genCode) && /createHash/.test(genCode), 'make_art.mjs 不像是在自己写 PNG（没引 zlib/createHash）');
+// 逐张 sha 对拍尺：baseline = 盘上提交的字节，actual = 现跑生成的字节
+function shaDrift(baseline, actual) {
+  const bad = [];
+  for (const rel of new Set([...Object.keys(baseline), ...Object.keys(actual)])) {
+    if (!(rel in baseline)) bad.push(`${rel} 只出现在生成端（盘上没有这张）`);
+    else if (!(rel in actual)) bad.push(`${rel} 只存在于盘上（生成器不产它——盘上这张来路不明）`);
+    else if (baseline[rel] !== actual[rel]) bad.push(`${rel} 字节不同：盘上 ${baseline[rel]} vs 现跑 ${actual[rel]}`);
+  }
+  return bad;
+}
+
+const GEN_REL = 'assets/gen/make_art.mjs';
+const gen = fs.readFileSync(path.join(ROOT, GEN_REL), 'utf8');
+ok(purityBad(gen).length === 0, `make_art.mjs 出现时间/随机/环境源：${purityBad(gen).join(' ')} —— 同输入不同字节，资产就不可复现`);
+ok(/zlib|deflateSync/.test(gen) && /createHash/.test(gen), 'make_art.mjs 不像是在自己写 PNG（没引 zlib/createHash）');
 note(`生成门：make_art.mjs ${gen.split('\n').length} 行，注释外零时间源/零随机源/零环境依赖`);
+
+// 阴性对照：两份「看着还是那张图，但已经不是纯函数」的复制品必须被同一把尺抓住
+const mutants = [
+  ['注入 Math.random 的噪声', gen.replace('const mix = (a, b, t)', 'const mix = (a, b, t) => a[0] + Math.random() + (b[0] - a[0]) * t; const mixReal = (a, b, t)')],
+  ['注入 Date.now 的种名', gen.replace('const hex = (h) => {', 'const hex = (h) => { const _t = Date.now();')],
+];
+for (const [label, src] of mutants) {
+  const hits = purityBad(src);
+  ok(src !== gen, `变异体 ${label} 没改到源码：阴性对照空跑`);
+  ok(hits.length > 0, `阴性对照失手：${label} 被判成纯函数（尺子只会读原文，不会量变异体）`);
+  if (hits.length) note(`  抓到变异体「${label}」→ ${hits.join(' / ')}`);
+}
+
+/* 真跑：把生成器连同它的相对 import 链一起搬进临时目录跑一遍，逐字节对拍盘上资产。
+   为什么不在仓里原地跑：原地跑会把「门禁顺手改写了被测对象」这件事变成常态，
+   而且失败时工作区留下半改写的 PNG，下一腿量的已经不是同一份字节了。 */
+function stageGenIn(srcRoot, dstDir) {
+  fs.mkdirSync(dstDir, { recursive: true });
+  const copied = new Set();
+  const pull = (rel) => {
+    rel = rel.replace(/^\.\//, '');
+    if (copied.has(rel)) return;
+    copied.add(rel);
+    const abs = path.join(srcRoot, rel);
+    const dst = path.join(dstDir, rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    const text = fs.readFileSync(abs, 'utf8');
+    fs.writeFileSync(dst, text);
+    for (const m of text.matchAll(/from\s+'(\.[^']+)'/g)) pull(path.join(path.dirname(rel), m[1]));
+  };
+  pull(GEN_REL);
+  return [...copied];
+}
+const shaOfPngs = (root) => {
+  const map = {};
+  (function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) { if (name !== 'gen') walk(p); }
+      else if (name.endsWith('.png')) map[path.relative(root, p).split(path.sep).join('/')] = createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+    }
+  })(path.join(root, 'assets'));
+  return map;
+};
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'yajilin-art-'));
+let staged = [], drift = [], printed = 0, genMs = 0;
+try {
+  staged = stageGenIn(ROOT, TMP);
+  const t0 = process.hrtime.bigint();
+  const res = spawnSync(process.execPath, [path.join(TMP, GEN_REL)], { encoding: 'utf8', cwd: TMP });
+  genMs = Number(process.hrtime.bigint() - t0) / 1e6;
+  ok(res.status === 0, `临时目录里跑 make_art.mjs 退出码 ${res.status}：${(res.stderr || '').slice(0, 200)}`);
+  const actual = shaOfPngs(TMP);
+  drift = shaDrift(Object.fromEntries(allPng.map((p) => [path.relative(ROOT, p).split(path.sep).join('/'), createHash('sha256').update(fs.readFileSync(p)).digest('hex')])), actual);
+  ok(drift.length === 0, `生成器复现不出盘上资产（${drift.length} 处）：${drift.slice(0, 4).join(' | ')}`);
+  // 生成器自报的那一行（name  W×H  BYTES  sha12）必须与它真正写下的字节对得上
+  for (const line of (res.stdout || '').split('\n')) {
+    const m = /^(\S+\.png)\s+(\d+)×(\d+)\s+(\d+)B\s+([0-9a-f]{12})$/.exec(line.trim());
+    if (!m) continue;
+    const rel = Object.keys(actual).find((k) => k.endsWith('/' + m[1]) || k === 'assets/' + m[1]);
+    if (!rel) continue;
+    printed++;
+    const buf = fs.readFileSync(path.join(TMP, rel));
+    ok(actual[rel].startsWith(m[5]), `${m[1]} 自报 sha ${m[5]} 与实算 ${actual[rel].slice(0, 12)} 不符`);
+    ok(buf.length === Number(m[4]), `${m[1]} 自报 ${m[4]}B 实为 ${buf.length}B`);
+    const d = decodePng(buf);
+    ok(!d.bad && d.w === Number(m[2]) && d.h === Number(m[3]), `${m[1]} 自报 ${m[2]}×${m[3]} 与 IHDR ${d.w || '?'}×${d.h || '?'} 不符`);
+  }
+  ok(printed === allPng.length, `生成器只自报了 ${printed}/${allPng.length} 张（末行汇总不算自报）`);
+
+  // 阴性对照：把对拍清单里任意一张的 sha 改一个字符，尺子必须只报出那一张
+  const keys = Object.keys(actual).sort();
+  for (const tamper of [0, keys.length - 1]) {
+    const forged = { ...actual };
+    const k = keys[tamper];
+    forged[k] = 'f' + actual[k].slice(1) === actual[k] ? '0' + actual[k].slice(1) : 'f' + actual[k].slice(1);
+    const d2 = shaDrift(forged, actual);
+    ok(d2.length === 1 && d2[0].includes(k), `sha 篡改阴性对照失手（改 ${k} → 报 ${d2.length} 处）`);
+  }
+} finally {
+  fs.rmSync(TMP, { recursive: true, force: true });
+}
+note(`复现门：临时目录搬了 ${staged.length} 个源文件（${staged.join(' ')}），真跑 ${genMs.toFixed(0)}ms 产 ${Object.keys(allPng).length} 张，逐字节对拍漂移 ${drift.length} 处，自报行核验 ${printed} 张`);
 
 /* ---------- 阴性对照：三种假样本必须都被抓 ---------- */
 const fakes = [
