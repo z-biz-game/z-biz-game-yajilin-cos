@@ -18,7 +18,8 @@
     "store": "node tools/store-test.mjs",
     "balance": "node tools/balance.mjs",
     "ceiling": "node tools/ceiling.mjs",
-    "verify": "bash tools/verify.sh"
+    "verify": "bash tools/verify.sh",
+    "frames": "node tools/frame-rate-test.mjs"
   },
   "keywords": [
     "game",

@@ -22,6 +22,7 @@ const SUITES = [
   ['golden-test', ['tools/golden-test.mjs']],
   ['generator-probe', ['tools/generator-probe.mjs']],
   ['store-test', ['tools/store-test.mjs']],
+  ['frame-rate-test', ['tools/frame-rate-test.mjs']],
 ];
 
 function walk(dir, out) {
