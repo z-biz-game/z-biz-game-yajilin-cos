@@ -200,6 +200,30 @@ export async function loadGraph(context, entryRel, mutateAnim) {
 
 export const flush = async () => { for (let i = 0; i < 4; i++) { await new Promise((r) => setImmediate(r)); await new Promise((r) => setTimeout(r, 0)); } };
 
+// 喂 n 帧真实 rAF（时戳走 C0+i*interval，见头部口径①）
+export function pump(env, n, interval = 1000 / 60) {
+  const C0 = env.__clock();
+  for (let i = 1; i <= n; i++) {
+    const cb = env.__pending.shift();
+    env.__advance(interval);
+    if (cb) cb(C0 + i * interval);
+  }
+}
+
+// 沙箱里的 setTimeout 走的是虚拟时钟，只有喂帧时才会到期；所以任何 await 都得边喂帧边等，
+// 否则 await 里那句 `setTimeout(r, 0)` 会把整条 promise 挂死（实测）。
+export async function settle(env, promise, { frames = 20, rounds = 60 } = {}) {
+  let settled = false, value = null, error = null;
+  promise.then((v) => { value = v; settled = true; }, (e) => { error = e; settled = true; });
+  for (let r = 0; r < rounds && !settled; r++) {
+    pump(env, frames);
+    await new Promise((res) => setImmediate(res));
+  }
+  if (!settled) throw new Error(`settle: 等了 ${rounds * frames} 帧，promise 仍未落地`);
+  if (error) throw error;
+  return value;
+}
+
 // 真开机：一直喂帧到有盘且 state 离开 booting（§3「⚪ 仅标题态」不算通过）
 export async function bootToBoard(env, fps) {
   const interval = 1000 / fps;

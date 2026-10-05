@@ -12,7 +12,7 @@
 //
 // 存档的两段式解码不在这里重复：tools/store-test.mjs 已经拿九发真垃圾常驻判了。
 import { fileURLToPath } from 'node:url';
-import { ROOT, buildEnv, loadGraph, flush, bootToBoard } from './dom-sandbox.mjs';
+import { ROOT, buildEnv, loadGraph, flush, bootToBoard, pump, settle } from './dom-sandbox.mjs';
 
 // vm.SourceTextModule 只在 --experimental-vm-modules 下可用，裸 `node tools/…` 时自举一次。
 if (!process.execArgv.includes('--experimental-vm-modules') && !process.env.YAJ_BEH_RELIT) {
@@ -38,30 +38,7 @@ async function bootSandbox() {
   return { env, doc, y: booted.y };
 }
 
-// 喂 n 帧真实 rAF（时戳走 C0+i*interval，见 dom-sandbox 头部口径①）
-function pump(env, n, interval = 1000 / 60) {
-  const C0 = env.__clock();
-  for (let i = 1; i <= n; i++) {
-    const cb = env.__pending.shift();
-    env.__advance(interval);
-    if (cb) cb(C0 + i * interval);
-  }
-}
-
-// 在画布上按一次真指针（client 坐标），走 main.js 的 onDown 那条路
-// 沙箱里的 setTimeout 走的是虚拟时钟，只有喂帧时才会到期；所以任何 await 都得边喂帧边等，
-// 否则 newGame 里那句 `await new Promise(r => setTimeout(r, 0))` 会把整个 await 挂死（实测）。
-async function settle(env, promise, { frames = 20, rounds = 60 } = {}) {
-  let settled = false, value = null, error = null;
-  promise.then((v) => { value = v; settled = true; }, (e) => { error = e; settled = true; });
-  for (let r = 0; r < rounds && !settled; r++) {
-    pump(env, frames);
-    await new Promise((res) => setImmediate(res));
-  }
-  if (!settled) throw new Error(`settle: 等了 ${rounds * frames} 帧，promise 仍未落地`);
-  if (error) throw error;
-  return value;
-}
+// 喂 n 帧真实 rAF 与 settle 的口径都在 tools/dom-sandbox.mjs（帧率/键盘套件共用同一把尺）。
 
 // 真拖一笔：pointerdown 在 A 格心、pointermove 到相邻格心、pointerup。
 // 只按 pointerdown 在「画环」这支笔下不会长出环段（起点还没有上一条），所以判据要用 drag。
