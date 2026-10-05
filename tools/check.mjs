@@ -24,6 +24,7 @@ const SUITES = [
   ['store-test', ['tools/store-test.mjs']],
   ['frame-rate-test', ['tools/frame-rate-test.mjs']],
   ['behavior-test', ['tools/behavior-test.mjs']],
+  ['keyboard-test', ['tools/keyboard-test.mjs']],
   ['asset-test', ['tools/asset-test.mjs']],
 ];
 

@@ -595,8 +595,11 @@ window.addEventListener('keydown', async (ev) => {
     const r = Math.min(h - 1, Math.max(0, Math.floor(cursor / w) + dr));
     const c = Math.min(w - 1, Math.max(0, (cursor % w) + dc));
     cursor = r * w + c;
-    anchor = -1;
-    srCell.textContent = game.cellReport(cursor);
+    // 锚点必须活着跨过这一次移动：index.html:148 那句 keyhint 写的是「回车 从锚点动手」，
+    // 形状就是 Enter（定锚）→ 方向键（搬光标）→ Enter（将笔连过去）。这里以前是 anchor = -1，
+    // 于是下面 `else if (anchor !== cursor)` 那一整条落笔分支（含 setEdge/setRole/eraseAt 四支）
+    // 从键盘永远进不去——实测纯键盘按多少发都画不出一段环。放掉锚点是 Escape 的活，不是方向键的。
+    srCell.textContent = game.cellReport(cursor) + (anchor >= 0 && anchor !== cursor ? `（锚在第 ${Math.floor(anchor / w) + 1} 行第 ${anchor % w + 1} 列，回车将笔连过去）` : '');
   };
   // #sr-cell 是 aria-live 的那张嘴：只在方向键时改口是不够的——B / 退格 / Z 都真的改了盘面，
   // 读完「第 1 行第 3 列 没落笔」再按 B，屏幕上那句话说的是上一秒的事。
