@@ -19,7 +19,8 @@
     "balance": "node tools/balance.mjs",
     "ceiling": "node tools/ceiling.mjs",
     "verify": "bash tools/verify.sh",
-    "frames": "node tools/frame-rate-test.mjs"
+    "frames": "node tools/frame-rate-test.mjs",
+    "behavior": "node tools/behavior-test.mjs"
   },
   "keywords": [
     "game",

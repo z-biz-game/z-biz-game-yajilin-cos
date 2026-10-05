@@ -154,13 +154,27 @@ export class BoardView {
     return horiz ? { x: m.x, y: m.y - rad } : { x: m.x - rad, y: m.y };
   }
 
+  // 画布自己的 CSS 缩放系数：geo 的宽是「样式表要求的 CSS 像素」，rect 的宽是「它实际占到的
+  // 那一段」。两者不等就说明画布被缩过（transform: scale、max-width:100% 收窄、桌面端页面缩放
+  // 都会），此时 clientX 与盘面格心的比例就不是 1。BRIEF_COS §2 把这条点名为「手机上点 A 打 B」
+  // 的成因，所以命中换算必须显式除掉它，而不是假设它恒等于 1。
+  // 读到 0（画布还没布局）或离谱的值（rect 宽 0 时除以零）就退回 1，让命中退化到没缩放的老语义。
+  scaleOf() {
+    const rect = this.canvas.getBoundingClientRect();
+    const cssW = this.geo.w;
+    if (!cssW || !rect.width) return 1;
+    const k = rect.width / cssW;
+    return Number.isFinite(k) && k > 0.25 && k < 8 ? k : 1;
+  }
+
   hitCell(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
     const { cell, x, y } = this.geo;
     const g = this.game;
     if (!cell || !g) return -1;
-    const px = clientX - rect.left - x;
-    const py = clientY - rect.top - y;
+    const k = this.scaleOf();
+    const px = (clientX - rect.left) / k - x;
+    const py = (clientY - rect.top) / k - y;
     const gx = Math.floor(px / cell);
     const gy = Math.floor(py / cell);
     if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) return -1;
@@ -175,8 +189,9 @@ export class BoardView {
     const { cell, x, y } = this.geo;
     const g = this.game;
     if (!cell || !g) return null;
-    const px = clientX - rect.left - x;
-    const py = clientY - rect.top - y;
+    const k = this.scaleOf(); // 与 hitCell 同一条缩放：叉和环段必须落在同一个格子上
+    const px = (clientX - rect.left) / k - x;
+    const py = (clientY - rect.top) / k - y;
     const gx = Math.floor(px / cell);
     const gy = Math.floor(py / cell);
     if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) return null;
