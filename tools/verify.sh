@@ -85,7 +85,7 @@ run() { # run <名字> <命令…>：测试步骤的红记进 FAILED，但不中
   if "$@"; then
     echo "  ok  $name"
   else
-    echo "  FAIL $name（见上面那段）" >&2
+    echo "  FAIL ${name}（见上面那段）" >&2
     FAILED=1
     note fail "$name 没过"
   fi
@@ -204,7 +204,7 @@ disown
 start_chrome() { # 每条腿一个全新的 mktemp profile：同源 localStorage 是会串味的
   if [ "$CDP_UP" = 1 ]; then
     if [ "$CPID" != 0 ]; then kill "$CPID" 2>/dev/null || true; fi
-    if [ -n "$UDD" ]; then for t in 1 2 3 4 5 6; do rm -rf "$UDD" 2>/dev/null && break; sleep 0.25; done; [ -e "$UDD" ] && echo "  note 上一腿的 profile 没删净（$UDD）：Chrome 的子进程还在收尾。本腿仍是全新的一条（:211 的 mktemp 给的是新路径），残留只占盘、不动判据" || true; fi
+    if [ -n "$UDD" ]; then for t in 1 2 3 4 5 6; do rm -rf "$UDD" 2>/dev/null && break; sleep 0.25; done; [ -e "$UDD" ] && echo "  note 上一腿的 profile 没删净（${UDD}）：Chrome 的子进程还在收尾。本腿仍是全新的一条（:211 的 mktemp 给的是新路径），残留只占盘、不动判据" || true; fi
   fi
   # -p 把新目录钉在 $TMPDIR（上面那条按平台选：macOS 是本仓的 _tmp-mk，Linux 是 /tmp——那里
   # 短路径是硬要求）：macOS 的 mktemp 不给 -p 时会落去 /var/folders，系统会中途把它清了。
@@ -284,7 +284,7 @@ if [ "$LOCAL" = 1 ]; then
 fi
 # 身份证据：$BASE 上有东西 ≠ 上面是本仓。标题里既要有「矢仓林」也要有 Yajilin。
 SERVED=$(curl -fsS -m 3 "$BASE" 2>/dev/null || true)
-case "$SERVED" in *js/main.js*) ;; *) echo "nothing served at $BASE（见 $LOGD/server-root.log）" >&2; exit 2 ;; esac
+case "$SERVED" in *js/main.js*) ;; *) echo "nothing served at ${BASE}（见 $LOGD/server-root.log）" >&2; exit 2 ;; esac
 echo "$SERVED" | grep -q 矢仓林 || { echo "$BASE 不是矢仓林（title 里没有「矢仓林」）" >&2; exit 2; }
 echo "$SERVED" | grep -qi yajilin || { echo "$BASE 不是矢仓林（title 里没有 Yajilin）" >&2; exit 2; }
 echo "identity: $(echo "$SERVED" | grep -o '<title>[^<]*</title>' | head -1) @ $BASE"
@@ -294,7 +294,7 @@ DEFAULT_SCEN="boot boot render play marks resume wrong win hint"
 
 # ── 腿 2：根形态 http://127.0.0.1:5326/ ──────────────────────────────────────────
 if [ "$LOCAL" = 1 ]; then
-  echo "=== 腿2 root：真 Chrome + 真指针（$BASE）==="
+  echo "=== 腿2 root：真 Chrome + 真指针（${BASE}）==="
   URL_FOR_LEG=$BASE
   LEG_MOBILE=0
   start_chrome
@@ -426,7 +426,7 @@ if [ "$LIVELEG" = 1 ]; then
     else
       echo "  FAIL 线上 $miss 返回 HTTP $code —— pages.yml 的名单漏了东西" >&2
       FAILED=1
-      note fail "线上 $miss 竟然可达（$code）"
+      note fail "线上 $miss 竟然可达（${code}）"
     fi
   done
 elif [ "$LOCAL" = 1 ]; then
@@ -438,7 +438,7 @@ else
 fi
 
 # ── 汇总：把每条腿的几条断言、几条红、证人读数并成一张表 ─────────────────────────
-echo "=== 汇总（$SUM）==="
+echo "=== 汇总（${SUM}）==="
 python3 -c "
 import sys
 rows = [l.rstrip('\n').split('\t') for l in open('$SUM', encoding='utf-8') if l.strip()]
