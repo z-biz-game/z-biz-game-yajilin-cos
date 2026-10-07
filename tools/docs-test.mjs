@@ -13,7 +13,11 @@
 //   · `::` 取段排在 `/` 判据之前，否则带目录限定的符号名会被当成路径而丢掉锚点；
 //   · 带 `<占位>` 的模板 body 取字面量前缀（只有真写了占位符才这么拆，否则 `test:syntax` 会拆成 `test`）；
 //   · 带空格的 body 是命令行（`npm test`），按首词钉就是一次假红；
-//   · 纯标点间隔（`，`、`、`）不构成指认——前面那个名字只是列表的上一项。
+//   · 纯标点间隔（`，`、`、`）不构成指认——前面那个名字只是列表的上一项；
+//   · 续引（完整引用后面只写 `:NN`）向**同一句里最近的那条完整引用**借路径，句号、分号、空行、
+//     新标题都截断这次借；借不到的计入「无法定址」，由等值闸逐处钉住，不静默跳过。
+//   · 跨仓引用（`../别的仓/…:NN`）按形状分出去：单仓 checkout 里读不到它，按"文件在不在"决定红不红
+//     就是一条随环境漂的闸。这条腿只数它（「跨仓引用 N 处」由等值闸钉住），不替别的仓担保行号。
 //
 // 这一条腿不覆盖什么，写在 README 的「没有覆盖」里，别把它当成全量对账。
 //
@@ -30,6 +34,22 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const PATH_SRC = '[\\w./-]+?\\.(?:js|mjs|cjs|sh|json|yml|html|css)';
 const CITE = new RegExp('^(' + PATH_SRC + '):([0-9]+(?:[,-][0-9]+)*)$');
+// 续引：完整引用后面只写行号（`js/main.js:120` 之后再写 `:124`）。本仓文档里就有这种写法，而这条腿
+// 以前只认带路径的那一种，于是它报"每一条都在界内"时看的其实是文档的一部分。
+// 只向同一句里最近的那条完整引用借路径；正文里提到一个文件名不构成出处——宁可计入「无法定址」，
+// 也不要在错的文件上判绿（判绿比判红糟）。条数不写死在这里，由下面的覆盖面行与等值闸现数现钉。
+const BARE = /^:([0-9]+(?:[,-][0-9]+)*)$/;
+const STOP = /[。！？；]/;
+const inheritedPath = (text, spans, i) => {
+  for (let j = i - 1; j >= 0; j--) {
+    const pc = spans[j].body.match(CITE);
+    if (!pc) continue;
+    const between = text.slice(spans[j].end, spans[i].s);
+    if (between.includes('\n') && (STOP.test(between) || /\n[ \t]*\n/.test(between) || /\n#{1,6} /.test(between))) return null;
+    return { path: pc[1] };
+  }
+  return null;
+};
 // 锚点可以是成员路径（`view.cellCenter`），但不许是文件路径：body 里带 `/` 的那一类是另一条引用，
 // 把它当锚点按字符串去被指的那几行里找，只会凭空造出假红。
 const ID = /^[A-Za-z_$][A-Za-z0-9_$]{2,}(?:\.[A-Za-z_$][A-Za-z0-9_$]+)*$/;
@@ -59,7 +79,7 @@ const linesOf = (p) => {
   return lineCache.get(p);
 };
 
-function parseRefs(text) {
+function parseRefs(text, orphans = null) {
   const spans = [];
   const spanRe = /`([^`\n]+)`/g;
   let m;
@@ -67,7 +87,10 @@ function parseRefs(text) {
   const out = [];
   for (let i = 0; i < spans.length; i++) {
     const c = spans[i].body.match(CITE);
-    if (!c) continue;
+    const bare = c ? null : BARE.exec(spans[i].body);
+    if (!c && !bare) continue;
+    const owner = c ? { path: c[1] } : inheritedPath(text, spans, i);
+    if (!owner) { if (orphans) orphans.push(bare[0]); continue; }
     let anchor = '';
     let consumed = false;
     const next = spans[i + 1];
@@ -85,19 +108,27 @@ function parseRefs(text) {
       const shaped = /^[（(]/.test(gT) || /[\w一-鿿]/.test(gT);
       if (shaped && !/\s/.test(prev.body) && gap.length <= 4 && !gap.includes('\n')) anchor = tokOf(prev.body);
     }
-    for (const seg of c[2].split(',')) {
+    // 续引只借路径——它自己印的那些数字才是文档的主张。
+    const range = c ? c[2] : bare[1];
+    for (const seg of range.split(',')) {
       const parts = seg.split('-').map(Number);
-      out.push({ path: c[1], from: parts[0], to: parts[parts.length - 1] || parts[0], anchor });
+      out.push({ path: owner.path, from: parts[0], to: parts[parts.length - 1] || parts[0], anchor, cont: !c });
     }
   }
   return out;
 }
 
 function audit(text) {
-  const refs = parseRefs(text);
+  const orphans = [];
+  const refs = parseRefs(text, orphans);
   const outOfRange = [];
   const anchorBad = [];
+  let foreign = 0;
   for (const r of refs) {
+    // 跨仓引用（`../别的仓/…:NN`）在单仓 checkout 里根本读不到：按"文件在不在"决定红不红，
+    // 这条腿就变成一台机器上绿、CI 里红。所以按**形状**分类，不按存在性——它是别的仓的坐标，
+    // 本仓的闸只数它、不验它，那个数由文档写出来并由等值闸钉住（不静默放行）。
+    if (r.path.startsWith('..')) { foreign++; continue; }
     const label = `${r.path}:${r.from}${r.to !== r.from ? '-' + r.to : ''}`;
     const lines = linesOf(r.path);
     if (!lines) { outOfRange.push(`${label} 文件不存在`); continue; }
@@ -117,7 +148,7 @@ function audit(text) {
     if (!lines) outOfRange.push(`${k[1]}（${k[2]} 行）文件不存在`);
     else if (lines.length !== Number(k[2])) outOfRange.push(`${k[1]} 实测 ${lines.length} 行，文档写的是 ${k[2]}`);
   }
-  return { refs, outOfRange, anchorBad };
+  return { refs, outOfRange, anchorBad, cont: refs.filter((r) => r.cont).length, unaddressed: orphans.length, foreign };
 }
 
 export function run(ok) {
@@ -129,10 +160,16 @@ export function run(ok) {
   const bad = [];
   const anchorBad = [];
   let refs = 0;
+  let cont = 0;
+  let unaddressed = 0;
+  let foreign = 0;
   for (const f of docFiles) {
     const a = audit(fs.readFileSync(path.join(ROOT, f), 'utf8'));
     docText += fs.readFileSync(path.join(ROOT, f), 'utf8') + '\n';
     refs += a.refs.length;
+    cont += a.cont;
+    unaddressed += a.unaddressed;
+    foreign += a.foreign;
     for (const b of a.outOfRange) bad.push(`${f} · ${b}`);
     for (const b of a.anchorBad) anchorBad.push(`${f} · ${b}`);
   }
@@ -150,6 +187,73 @@ export function run(ok) {
   ok(claims.length >= 1 && claims.every((c) => c === refs),
     `docs: 文档里每一处「解析 N 条」都等于这条腿自己数到的（删掉这个数字同样算红）· 闸数到 ${refs} · ` +
     `文档写了 ${claims.length} 处：${[...new Set(claims)].join('/') || '（一处都没写）'}`);
+
+  // 续引在本仓文档里到底借到了没有：一条也没有就是这条规则在自己仓里空转。
+  ok(cont >= 1 && cont < refs,
+    `docs: 两份文档里确有续引在同句内借到了出处（一条也没有就是这条规则空转）· 解析 ${refs} 条 · ` +
+    `其中续引借到出处 ${cont} 条`);
+
+  // 借不到出处的那些不判错、也不静默跳过：数出来写进文档，再由这一条逐处钉住。
+  // 新增一条定不了址的引用会把闸打红，而不是让覆盖面悄悄缩水。
+  const gapClaims = [...docText.matchAll(/无法定址 (\d+) 处/g)].map((x) => Number(x[1]));
+  ok(Number.isInteger(unaddressed) && gapClaims.length >= 1 && gapClaims.every((c) => c === unaddressed),
+    `docs: 文档里每一处「无法定址 N 处」都等于这条腿数到的借不到出处的续引（删掉这个数字同样算红）· ` +
+    `闸数到 ${unaddressed} · 文档写了 ${gapClaims.length} 处：${[...new Set(gapClaims)].join('/') || '（一处都没写）'}`);
+
+  // 跨仓引用是这条腿够不着的坐标：不验，但也不静默放行——数出来写进文档，由等值闸钉住。
+  // 两把控制腿配成对：一把证明"按形状分出去"的那条真的分出去了（越界检查不参与，否则在 CI 的
+  // 单仓 checkout 里必红），另一把证明**本仓**的假路径仍然红——不然上一把的绿只是因为什么都不查。
+  const cX = audit('这条分工照 `../z-biz-game-other-cos/tools/balance.mjs:99999` 那份');
+  ok(cX.foreign === 1 && cX.outOfRange.length === 0 && cX.refs.length === 1,
+    'docs: 跨仓引用按形状认出来、只数不验（行号再离谱也不参与本仓的越界检查）· ' +
+    `foreign=${cX.foreign} refs=${cX.refs.length} 红=${cX.outOfRange.join(' | ') || '无'}`);
+  const cY = audit('本仓的假路径 `tools/nope-here.js:9`');
+  ok(cY.foreign === 0 && cY.outOfRange.length === 1 && cY.outOfRange[0].includes('文件不存在'),
+    'docs: 同一条腿对本仓路径照旧判红：上一条的绿不是"什么都不查" · ' +
+    `foreign=${cY.foreign} 红=${cY.outOfRange.join(' | ') || '（没红）'}`);
+  const foreignClaims = [...docText.matchAll(/跨仓引用 (\d+) 处/g)].map((x) => Number(x[1]));
+  ok(foreign >= 1 && foreignClaims.length >= 1 && foreignClaims.every((c) => c === foreign),
+    `docs: 文档里每一处「跨仓引用 N 处」都等于这条腿按形状数到的（删掉这个数字同样算红）· 闸数到 ${foreign} · ` +
+    `文档写了 ${foreignClaims.length} 处：${[...new Set(foreignClaims)].join('/') || '（一处都没写）'}`);
+
+  // 「其中 N 条带指认」也是实测读数，两种写法都要等于这条腿自己认到的锚点条数——
+  // 只写下限（anchored >= 12）抓不住"文档抄的是上一轮那个数"。
+  const anchorClaims = [...docText.matchAll(/(\d+) 条(?:贴着引用写了指认|带指认)/g)].map((x) => Number(x[1]));
+  ok(anchorClaims.length >= 1 && anchorClaims.every((c) => c === anchored),
+    `docs: 文档里每一处「N 条带指认」都等于这条腿认到锚点的条数 · 闸数到 ${anchored} · ` +
+    `文档写了 ${anchorClaims.length} 处：${[...new Set(anchorClaims)].join('/') || '（一处都没写）'}`);
+
+  // 续引的七把控制腿，全在内存里、盘上的文档一个字不动：
+  // 借到 / 句尾墙 / 软换行仍算同一句 / 空行与新标题截断 / 借来的路径喂进边界检查 /
+  // 正文里提到的文件名不是出处 / 同一句改写成完整引用就读得回来。
+  const cG = audit('`SUITES`（`tools/check.mjs:17`）、`got`（`:124`）');
+  ok(cG.refs.length === 2 && cG.cont === 1 && cG.unaddressed === 0 &&
+    cG.outOfRange.length + cG.anchorBad.length === 0 && cG.refs.every((r) => r.path === 'tools/check.mjs'),
+    'docs: 续引在同句内借到出处，并带上自己那一格的指认 · ' +
+    [...cG.outOfRange, ...cG.anchorBad].join(' | ') + `（refs=${cG.refs.length} 借到=${cG.cont} 借不到=${cG.unaddressed}）`);
+  const cW = audit('`SUITES`（`tools/check.mjs:17`）。\n`got`（`:124`）');
+  ok(cW.refs.length === 1 && cW.unaddressed === 1,
+    'docs: 句号把借的窗口关上：下一句的续引不许挂到上一句的出处上 · ' +
+    `refs=${cW.refs.length} 借不到=${cW.unaddressed}`);
+  const cP = audit('`SUITES`（`tools/check.mjs:17`）、\n`got`（`:124`）');
+  ok(cP.refs.length === 2 && cP.unaddressed === 0,
+    'docs: 软换行不算换句：同一句折行后续引照样借得到 · ' +
+    `refs=${cP.refs.length} 借不到=${cP.unaddressed}`);
+  const cH = audit('`SUITES`（`tools/check.mjs:17`）\n\n## 续\n`got`（`:124`）');
+  ok(cH.refs.length === 1 && cH.unaddressed === 1,
+    'docs: 空行与新标题同样截断这次借 · ' + `refs=${cH.refs.length} 借不到=${cH.unaddressed}`);
+  const cB = audit('`SUITES`（`tools/check.mjs:17`）、`got`（`:99999`）');
+  ok(cB.outOfRange.length === 1 && cB.outOfRange[0].includes('tools/check.mjs') && cB.outOfRange[0].includes('越界'),
+    'docs: 借来的路径喂进边界检查：续引写一个越界的行号必须红，并点名被借的那个文件 · ' +
+    (cB.outOfRange.join(' | ') || '（没红）'));
+  const cF = audit('这套名单住在 `check.mjs` 里，`got`（`:124`）');
+  ok(cF.refs.length === 0 && cF.unaddressed === 1,
+    'docs: 正文里提到的文件名不是出处：这种写法必须算借不到，而不是在错的文件上判绿 · ' +
+    `refs=${cF.refs.length} 借不到=${cF.unaddressed}`);
+  const cC = audit('这套名单住在 `check.mjs` 里，`got`（`tools/check.mjs:124`）');
+  ok(cC.refs.length === 1 && cC.unaddressed === 0 && cC.outOfRange.length + cC.anchorBad.length === 0,
+    'docs: 同一句改写成完整引用就读得回来：上一条红的是写法，不是解析器漏了这一句 · ' +
+    [...cC.outOfRange, ...cC.anchorBad].join(' | ') + `（refs=${cC.refs.length} 借不到=${cC.unaddressed}）`);
 
   // 反空转：七把假引用必须一把不落——文件不存在、行号越界、四种写法各自的锚点漂、行数写错。
   const F = audit('出处 `js/engine/nope.js:1`、`js/engine/generate.js:99999`、`NO_SUCH_NAME` 在 `js/engine/generate.js:1`、' +
@@ -193,7 +297,7 @@ export function run(ok) {
     `docs: 把文档里一条真引用的行号挪歪一格，这条腿必须为它变红 · needle 命中 ${hits} 处 · ` +
     `红在 ${[...poisoned.outOfRange, ...poisoned.anchorBad].join(' | ') || '（一处都没红）'}`);
 
-  return { refs, anchored, docs: docFiles.length };
+  return { refs, anchored, foreign, docs: docFiles.length };
 }
 
 // 指认条数与 audit 用同一套解析，只数"有锚点的"那几条。
@@ -205,7 +309,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   let checks = 0, fails = 0;
   const ok = (c, m) => { checks++; if (!c) { fails++; console.log('FAIL: ' + m); } else console.log('ok: ' + m); };
   const r = run(ok);
-  console.log(`文档行号对账：${r.docs} 份文档，解析 ${r.refs} 条、认到锚点 ${r.anchored} 条`);
+  console.log(`文档行号对账：${r.docs} 份文档，解析 ${r.refs} 条、认到锚点 ${r.anchored} 条、跨仓 ${r.foreign} 条`);
   console.log(`RESULT docs-test ok=${fails === 0} checks=${checks} fails=${fails}`);
   process.exit(fails === 0 ? 0 : 1);
 }
