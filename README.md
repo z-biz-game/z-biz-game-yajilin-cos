@@ -89,7 +89,7 @@ UI 判胜走的就是它，没有第二套判定（`js/ui/game.js:8-9`、`js/ui/
 出处：出货率与红线判定 `tools/generator-probe.mjs:78`（`recs.length === N` 才算绿）；
 墙钟/节点/箭头/尝试的打印口径 `tools/generator-probe.mjs:86-97`；
 轮数与步数 `tools/generator-probe.mjs:102-106`；PLATEAU 账本来自
-`js/engine/generate.js:150`（`pSet` 不是 `PENCIL_SOLVED` 就把该状态记进 `dead` 并换盘）。
+`js/engine/generate.js:149-150`（`pSet` 不是 `PENCIL_SOLVED` 就把该状态记进 `dead` 并换盘）。
 「用到规则条数」是逐盘统计**至少发火一次**的规则条数（P10 全表 0 次，故不计入，
 理由见 `js/engine/pencil.js:17-19`）。
 
@@ -161,7 +161,7 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 （`js/engine/pencil.js:2-12`，规则名表 `js/engine/pencil.js:25`，定点迭代 `js/engine/pencil.js:96`）。
 出货要求的是**全解**：`pSet` 只有返回 `PENCIL_SOLVED` 才继续，
 `PLATEAU` / `UNSOUND_PENCIL` / `ROUND_LIMIT` 三种状态一律记进废因并换盘
-（`js/engine/generate.js:72-93` 的四个出口、`js/engine/generate.js:150`）。
+（`js/engine/generate.js:72-93` 的四个出口、`js/engine/generate.js:149-150`）。
 挖完线索之后还要再跑一次铅笔，仍然必须全解才出货
 （`js/engine/generate.js:162-163`，返回字段 `stillSolved`），
 门禁那一侧的红线是「挖完线索后铅笔仍须全解 = 0 盘不合格」
@@ -213,21 +213,38 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 | **不承诺线索最少** | 极小只在「单颗摘除」的意义上成立，而且是四趟贪心；每盘进入复核的箭头 med 只有 1–2 条，多数箭头是被「改黑即撞黑格相邻」的前置过滤挡掉的，从未被计数器正面拒绝过。本轮 16 盘合计删掉 3 / 6 / 7 / 8 颗箭头。 | `js/engine/generate.js:103`、`js/engine/generate.js:112`、`js/engine/generate.js:121` |
 | **不承诺界面手感与美术** | 浏览器闸只认三种证据：DOM 矩形与文本、画布像素、真指针事件读数。它证的是「玩家拿到了什么」，不是「好不好看」。`.hidden`、类名、注释里的意图一概不算证据。 | `tools/scenarios.js:6-9`、`tools/verify.sh:13-14` |
 | **不承诺 `score` 可跨引擎/跨盘比较** | 本仓唯一的 `score` 是 `pSet` 内部给候选动作排序用的 `rolesDone*2 + edgesDone`，它只是一个贪心键，没有任何一处把它当难度、质量或成绩输出。 | `js/engine/generate.js:42`、`js/engine/generate.js:85-87` |
-| **不承诺菜单外的档能出货** | 仓内复跑器 `tools/ceiling.mjs` 用**同一套出货默认值**（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`，`js/engine/generate.js:27-28`）打四颗**写死的** seed（`cl-14x14-0..3`、`cl-16x16-0..3`，不由日期派生）：本轮 2026-09-29 实测 **14×14 出货 0/4、16×16 出货 0/4**，八颗 seed 把 60 次换盘机会全部撞满；逐样本墙钟 14×14 `[3442 3131 3157 3407]` ms、16×16 `[4694 5540 5252 5772]` ms（load1 3.21→3.57，15 核，node v26.8.1），**每一颗都越过房子口径 2000 ms**。唯一废因仍是 PLATEAU（两档各累计 240 次），`COUNTER` 出现 0 次——`pSet` 推不到全解（`js/engine/generate.js:150`）就 continue，压根走不到认证计数那一步（`js/engine/generate.js:155`），所以卡的不是 DP 成本。这两批观测值不写回代码：代码里钉的是 `RECORD` 那两张表（`tools/ceiling.mjs:54-55`，14×14 `[3229 2983 3072 3131]`、16×16 `[4462 5283 5076 5546]`），C1 每次拿实测值去对**量级**（×[0.4, 3]）而不是逐位相等——复跑器每轮重测，锚只用来抓「机器或流水线变了」。⚠ 更早一版这里写的是「14×14 出 3/4、16×16 出 1/4、那颗 attempts 59/60、墙钟 `[633 1745 2961 3379]`」：那批数出自**仓外**的桌面筛探针（另一段 seed 空间，clone 之后重跑不出来），换成仓内这四颗 seed 就是 0/4——结论方向没变（只会更硬），文档以仓内可复跑的那份为准。现在这三档都不在菜单里（`js/engine/generate.js:35-40`）。 | `tools/ceiling.mjs:45-56`、`tools/ceiling.mjs:110-135`、`js/engine/generate.js:28` |
+| **不承诺菜单外的档能出货** | 仓内复跑器 `tools/ceiling.mjs` 用**同一套出货默认值**（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`，`js/engine/generate.js:27-28`）打四颗**写死的** seed（`cl-14x14-0..3`、`cl-16x16-0..3`，不由日期派生）：本轮 2026-09-29 实测 **14×14 出货 0/4、16×16 出货 0/4**，八颗 seed 把 60 次换盘机会全部撞满；逐样本墙钟 14×14 `[3442 3131 3157 3407]` ms、16×16 `[4694 5540 5252 5772]` ms（load1 3.21→3.57，15 核，node v26.8.1），**每一颗都越过房子口径 2000 ms**。唯一废因仍是 PLATEAU（两档各累计 240 次），`COUNTER` 出现 0 次——`pSet` 推不到全解（`js/engine/generate.js:149-150`）就 continue，压根走不到认证计数那一步（`js/engine/generate.js:155`），所以卡的不是 DP 成本。这两批观测值不写回代码：代码里钉的是 `RECORD` 那两张表（`tools/ceiling.mjs:54-55`，14×14 `[3229 2983 3072 3131]`、16×16 `[4462 5283 5076 5546]`），C1 每次拿实测值去对**量级**（×[0.4, 3]）而不是逐位相等——复跑器每轮重测，锚只用来抓「机器或流水线变了」。⚠ 更早一版这里写的是「14×14 出 3/4、16×16 出 1/4、那颗 attempts 59/60、墙钟 `[633 1745 2961 3379]`」：那批数出自**仓外**的桌面筛探针（另一段 seed 空间，clone 之后重跑不出来），换成仓内这四颗 seed 就是 0/4——结论方向没变（只会更硬），文档以仓内可复跑的那份为准。现在这三档都不在菜单里（`js/engine/generate.js:35-40`）。 | `tools/ceiling.mjs:45-56`、`tools/ceiling.mjs:110-135`、`js/engine/generate.js:28` |
 | **不承诺 12×12 在任何机器上都在线内**（它就是因此被请出菜单的那一档） | 同一个 seed 空间、同一套默认值、同一个判据：本机四次复跑 p95 读成 1248 / 1254 / 1266 / 1342 ms（负载 2.74~4.79，15 核），线内；CI runner（2 核 ubuntu-latest，load1 0.82）读成 **p95 2985 ms**，线外（`tools/balance.mjs:67` 那条绝对值线不动）。菜单顶档因此回到 10×10：本机 p95 208 ms（剂量表那一趟）/ 201 ms（平衡闸那一趟）、runner 458 ms，两台机器都在线内。**降级不等于免责**：12×12 仍被剂量表与 `tools/balance.mjs` 逐轮量（写下这句那一轮 16/16 出货、p95 1266 ms 照旧打印；包络改完之后本机两趟读 1253 / 1394 ms，见 §五），只是 `inMenu: false` ⇒ 下拉框里选不到；而「缩菜单躲门」这件事本身被 B6b 钉住——菜单顶档面积不许小于 10×10（`tools/balance.mjs:226-231`），要再往下缩就得同时改判据、README 与 DESIGN 那两张梯级表。存档里已有的 12×12 那一局照旧续得上（`js/ui/puzzle.js:21-24`）。 | `js/engine/generate.js:35-40`、`tools/balance.mjs:63-67`、`tools/balance.mjs:218-235`、`tools/ceiling.mjs:33-37` |
 | **不承诺 P10 是一条难度梯级** | 本轮 64 张出货盘上 P10 命中 0 盘（四档全 0），它的价值是健全性证人。这条被写成红线：命中盘数一旦不是 0 就直接红。 | `js/engine/pencil.js:17-19`、`tools/generator-probe.mjs:82` |
 | **不承诺「同一个 seed 永远同一张盘」跨版本成立** | seed→盘 是纯函数（判定路径上没有随机数也没有时钟），但**流水线一改版同一个 seed 就是另一张盘**。存档靠题面指纹对账，对不上就作废旧笔迹并当面向玩家说明。 | `js/engine/generate.js:168-175`、`js/ui/puzzle.js:26-30`、`js/store.js:84-90`、`js/main.js:268-271`、`js/main.js:294-297` |
 | **不承诺「最坏 1.2 秒」** | 16 样本里 0 次「60 试全废」只说明这一批没撞封顶，不说明封顶不会被撞。12×12 观测到的最坏 attempts 已经是 55/60（这一档现在在档外；菜单三档本轮最坏 6 / 11 / 32，离 60 还远）。界面侧的降级路径是「再敲一颗 seed」，最多 8 颗，全失败就照直说 `NO_BOARD`。 | `js/main.js:26-28`、`js/main.js:254-264`、`js/ui/puzzle.js:32-35` |
+| **不承诺文档全量对账**（下面那条文档腿只认它看得见的指认） | 它只读反引号里的 `文件:行号`，而且只认**贴着引用**写的那个名字：隔了半句的不算、写在正文里不带反引号的不算、`path:NN` 之后用 `：MM` 续引的写法解析不到、`aria-label` 这种带连字符的名字不构成锚点。它证的是"印出来的行号还在它说的那几行里"，不是"文档每句话都对"。 | `tools/docs-test.mjs:36-45`（`tokOf`）、`tools/docs-test.mjs:85`（`shaped`）、`tools/docs-test.mjs:180-182`（`comma`） |
 
 ---
 
 ## 六、门禁形状（细节见 DESIGN.md）
 
-`node tools/check.mjs` 本轮：7 行 RESULT、741 条断言、红 0。
+`node tools/check.mjs` 本轮：7 行 RESULT、六套合计 741 条断言、聚合 check 148 条、红 0。
 逐套：rule 48 / pencil 435 / counter 71 / golden-write 7 / golden-test 156 / generator-probe 24，
-聚合 check 131（本轮新增的两个工具也被语法门扫到，23 → 25 个文件；套件表 `tools/check.mjs:17-24`，行数与格式判定 `tools/check.mjs:106-124`，
-外加产物边界那两条 grep 的 27 项 `tools/check.mjs:126-143`——它们与 CI 用同一个正则，
+聚合 check 148（本轮读数；其中下面那条文档腿并进来 11 项。语法门本轮扫 29 个文件；套件表 `tools/check.mjs:17-24`，行数与格式判定 `tools/check.mjs:106-124`，
+外加产物边界那两条 grep 的 29 项 `tools/check.mjs:126-143`（14 个运行时文件 × 2 条，再加那条数量下限）——它们与 CI 用同一个正则，
 本仓第一次推上去时 CI 就是红在这一条上，而当时本地全绿）。
+
+**文档行号对账**（`node tools/docs-test.mjs`，本轮 11 项、红 0）：它也被 `tools/check.mjs` 直接 import
+（第七道静态门，`tools/check.mjs:151` 的 `run`），所以 `npm test` 全绿时它已经算过一遍，断言并进上面那行聚合
+`check` 的 `checks`——它不占 `SUITES` 的名额，「六套 / 7 行 RESULT」那份名单一个字没改，理由与上面
+`balance` 那条 step 同一个（改名单要连着动 `tools/check.mjs:17-24`、`tools/verify.sh:265` 的 `need`、
+`.github/workflows/ci.yml:76` 与两处「六套」注释）。这条腿把本文与 DESIGN 里挂在反引号里的 `文件:行号`
+读回来对账：本轮解析 310 条，逐条要求在盘上、在界内；其中 20 条贴着引用写了指认（
+`name`（`path:NN`）、`path:NN`（`name`）、`path:NN` 的 `name`、`path:NN`（`fn(a, b)`）、
+`path:NN`（`dir/file.js::symbol`）五种贴法），那些还额外要求被指的那几行里**真的有**那个名字。
+只查越界抓不住"漂到隔壁一行"：本轮清出来一条——「`pSet` 不是 `PENCIL_SOLVED` 就 continue」写作
+`js/engine/generate.js:150`，可 149 行才是 `pSet(b, { candLimit })` 那句调用，150 行读的是它的返回值。
+改的是引用（两处一起指成 `149-150`），检查本身一格没放宽。控制一把不落：七把假引用（不存在 / 越界 /
+行数错 / 后向漂 / 前向括号漂 / 「的」漂 / 调用形式漂）逐把点名、五种真注解加带空格的命令行 body
+（`npm test`）在同一解析器下判绿、模板前缀一绿一红、逗号那种写法必须判绿（写宽了它先推翻）、
+最后一把毒针只在内存里把一条真引用挪歪到 151-152（在界内，越界检查一条都不会红）。
+文档里那个「解析 310 条」由这条腿自己对账：抄错一格就红，把数字删掉同样算红。
 
 `node tools/balance.mjs` 本轮：`RESULT balance ok=true checks=42 fails=0`（16 张/档、
 load1 3.22→3.42、node v26.8.1；换到包络口径后又复跑一趟，load1 5.30→9.05、同样 checks=42 fails=0）。它在 CI 里是 `check` job 的一条**独立 step**

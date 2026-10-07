@@ -27,7 +27,7 @@
 | 10×10 | **0 / 16** | 16 / 16 | — |
 | 12×12 | **0 / 16** | 16 / 16 | — |
 
-`pSet` 那一列就是 `README.md` 第三节表的出货率（`js/engine/generate.js:150` 只放行
+`pSet` 那一列就是 `README.md` 第三节表的出货率（`js/engine/generate.js:149-150` 只放行
 `PENCIL_SOLVED`）。也就是说：**同一批解，换一种挑方向的方式，从 0/16 变成 16/16。**
 这就是为什么 `js/engine/model.js:86-89` 要把「随机方向只是搜索起点，没有任何一张盘带着它出货」
 写成显式披露——读代码的人若只看 `generate()`，会以为题面就是随机方向那种题面。
@@ -102,14 +102,14 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 
 ---
 
-## 三、门禁的形状：六道静态/逻辑门 + 六条浏览器腿
+## 三、门禁的形状：七道静态/逻辑门 + 六条浏览器腿
 
 ### node 侧：静态门跑在逻辑门前面，最后再数一次行数
 
 `tools/check.mjs` 的顺序是有理由的，三段依次是：
 
 1. **语法门**：`node --check` 扫 `js/` 与 `tools/` 下每个 `.js/.mjs/.cjs`
-   （`tools/check.mjs:39-46`，本轮 25 个文件——tools/ 下新增的 balance 与 ceiling 也在扫描范围内）；
+   （`tools/check.mjs:39-46`，本轮 29 个文件——tools/ 下新增的 balance、ceiling 与 docs-test 也在扫描范围内）；
 2. **禁词源闸**：6 个引擎文件 × 7 个禁词（`process.env` / `Math.random` / `Date.now|new Date` /
    `performance.now` / `require(` / `node:` 导入两种写法），**注释外**零命中
    （`tools/check.mjs:53-70`，本轮读成「6 个引擎文件 × 7 个禁词，注释外零命中」）；
@@ -125,8 +125,8 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 所以只能读源码（`tools/check.mjs:72-77`）。
 
 4. **六套 suite**：rule / pencil / counter / golden-write(`--check`) / golden / generator-probe
-   （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 131（语法门 25 个文件），红 0
-   （聚合里除了「六套齐 + 逐行格式」还有下面第 6 条那 27 项边界断言）；
+   （`tools/check.mjs:17-24`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 148（语法门 29 个文件），红 0
+   （聚合里除了「六套齐 + 逐行格式」还有下面第 6 条那 29 项边界断言与第 7 条那 11 项文档对账）；
    口径提醒：`tools/check.mjs:17-24` 的 `SUITES` 数组与 `tools/verify.sh:265` 的 `need` 列表都是六条，
    `tools/verify.sh:245` 那行 echo 也念「六套」。
    曾经有四行**注释**写着「五套 / five suites」（`tools/verify.sh:241`、`.github/workflows/ci.yml:13`、
@@ -157,7 +157,17 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
    「本地绿」与「CI 绿」根本不是同一件事，因为这两条 grep 原先只有 CI 有。
    修法是把门搬到本地（不是把 CI 那条放宽）：注释改指 DESIGN 的对应小节，
    正则与 CI 逐字一致，同样**不分注释**（grep 不知道哪段是注释，所以门也不假装知道）。
-   本轮读成「边界门：13 个运行时文件 × 2 条 grep，零命中」。
+   本轮读成「边界门：14 个运行时文件 × 2 条 grep，零命中」。
+7. **文档行号对账**（`tools/docs-test.mjs`，`tools/check.mjs:145-154`）：本文与 README 里每个数字后面
+   都挂着 `文件:行号`，这句「行号指本仓代码」必须有机器读回来。它只读反引号里的引用，逐条要求
+   文件在盘上、行号在界内；贴着引用写的那个名字（五种贴法）还额外要求**真的出现在被指的那几行里**。
+   为什么要锚点：只查越界抓不住"漂到隔壁一行"，本轮清出来的 `js/engine/generate.js:150` → `149-150`
+   那一条就在界内，越界那半一条都不会红。它走 `await import` 而不是进 `SUITES`，理由与上面
+   第 4 条那段完全一样——加一行数组要连着改五处名单，而它本来就是静态门（读源码、不跑引擎）。
+   本轮读成「文档门：2 份文档由目录现数，解析 310 条 文件:行号、其中 20 条带指认」，11 项断言并进
+   聚合那行 `check` 的 checks。输入集从 `readdirSync` 现数（不手抄清单，抄了就会缩样还打印"全部在范围内"），
+   并配七把假引用、五种真注解的正样本、一把只改内存副本的毒针；文档里那个「解析 310 条」由这条腿
+   自己对账（抄错一格就红，把数字删掉同样算红）。
 
 ### CI 侧多出来的那一条：balance 是 step，不是第七套
 
@@ -187,7 +197,7 @@ B6b 菜单形状（防降级），本轮 checks=42 fails=0）。两个式子逐�
 
 | 腿 | 断言什么 | 本轮读数 | 出处 |
 |---|---|---|---|
-| 1 unit | 上面那六套 + 三道静态门 | 7 行 RESULT、741 条断言、红 0、退出码 0 | `tools/verify.sh:241-271` |
+| 1 unit | 上面那六套 + 四道读源码的静态门（语法 / 禁词 / seed / 文档行号） | 7 行 RESULT、六套 741 条、聚合 check 148 条、红 0、退出码 0 | `tools/verify.sh:241-271` |
 | 2 root | 根形态 `http://127.0.0.1:5326/` 上九场真指针 | 10 场 143 条断言 红 0 | `tools/verify.sh:295-308` |
 | 3 prefix | Pages 前缀形态（替身根由 symlink 按部署名单搭） | 10 场 143 条 红 0 | `tools/verify.sh:311-339` |
 | 4 deploy-list | 名单外的必须 404、名单内的必须 200 | 44 条 404 + 5 条 200 | `tools/verify.sh:341-372` |
@@ -520,7 +530,7 @@ PLATEAU 累计**（确定量，逐颗对死）与逐样本墙钟（×[0.4, 3]，
 **墙钟进到秒级**（八颗全部越过房子口径 2000 ms，`tools/ceiling.mjs:33-40` 那两行绝对值就是按这个判的）；
 **参照批仍在线内**（同一趟现量的菜单顶档 10×10 六颗 seed ⇒ C3a 打印的 p95 384 ms ≤ 2000 ms）。
 
-**唯一废因仍然只有 PLATEAU**（`pSet` 推不到全解，`js/engine/generate.js:150`），
+**唯一废因仍然只有 PLATEAU**（`pSet` 推不到全解，`js/engine/generate.js:149-150`），
 `COUNTER` 一次都没出现——也就是说这两档**根本没走到认证计数那一步**
 （`js/engine/generate.js:155`）。上一版的说法是「三张出货盘的 nodes 1272 / 4695 / 6010，
 仍远小于 `CERT_BUDGET_NODES = 5_000_000`」（`js/engine/generate.js:32`）；

@@ -142,5 +142,16 @@ for (const f of runtimeFiles) {
 }
 console.log(`边界门：${runtimeFiles.length} 个运行时文件 × 2 条 grep，与 CI 同正则`);
 
+/* ---------- 7) 文档行号对账 ----------
+ * 这一条不占 SUITES 的名额：DESIGN 第 4 条把「六套」这个数钉在 ci.yml / verify.sh 的 need 名单上，
+ * 加一行数组就要连着改五处名单。文档腿是静态门的一种（读源码、不跑引擎），所以走 import，
+ * 它的断言并进下面那行 `RESULT check` 的 checks 里——数行那一步数的还是七行 RESULT（六套 + 聚合）。
+ */
+{
+  const { run } = await import('./docs-test.mjs');
+  const r = run((cond, msg) => ok(cond, msg));
+  console.log(`文档门：${r.docs} 份文档由目录现数，解析 ${r.refs} 条 文件:行号、其中 ${r.anchored} 条带指认`);
+}
+
 console.log(`\nRESULT check ok=${fails === 0} checks=${checks} fails=${fails}（套件 ${SUITES.map((s) => s[0]).join(' ')}）`);
 process.exit(fails === 0 ? 0 : 1);
