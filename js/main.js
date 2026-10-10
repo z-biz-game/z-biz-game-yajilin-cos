@@ -79,20 +79,6 @@ function startClock() {
 // 再把 startedAt 清零 —— clock() 于是恒等于 baseElapsed，一毫秒都不再涨。
 // 恢复时重新盖上 startedAt，时钟从冻结处续走；因为 baseElapsed 已经是累计值，
 // 恢复后第一帧的 dt 就是一个正常帧间隔，不会把暂停那几秒一次性吃掉（不跳步）。
-let paused = false;
-function setPaused(next) {
-  next = !!next;
-  if (paused === next) return paused;
-  if (next) {
-    baseElapsed = clock();   // 先结算到此刻，再停表
-    startedAt = 0;
-  } else {
-    startedAt = Date.now();
-  }
-  paused = next;
-  paintPause();
-  return paused;
-}
 function paintPause() {
   const btn = $('btn-pause');
   if (!btn) return;
