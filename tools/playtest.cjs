@@ -128,10 +128,13 @@ async function main() {
   await cdp.send('Log.enable', {}, sessionId);
   await cdp.send('Page.enable', {}, sessionId);
 
-  const evaluate = async (expression) => {
+  // userGesture 只给 scenario 那一次求值：它让这趟求值带上一次真实的用户激活。
+  // 不带它，元素全屏永远在 "not called by user activation" 上抛 TypeError，#btn-fullscreen
+  // 那条腿就只能走"不支持"分支——测出来的其实是这个开关，而不是全屏本身。
+  const evaluate = async (expression, userGesture = false) => {
     const r = await cdp.send(
       'Runtime.evaluate',
-      { expression, returnByValue: true, awaitPromise: true, timeout: 900000 },
+      { expression, returnByValue: true, awaitPromise: true, timeout: 900000, userGesture },
       sessionId
     );
     if (r.exceptionDetails) {
@@ -183,13 +186,20 @@ async function main() {
     // against a browser that is only pretending to be in the background.
     await evaluate(`Object.defineProperty(document,'hidden',{get:()=>false,configurable:true});
       Object.defineProperty(document,'visibilityState',{get:()=>'visible',configurable:true});'ok'`);
+    // 跑场景之前把这张页真正置前：headless 里一个 profile 可以堆着好几张页，后排那张
+    // document.hasFocus() 为 false，Chrome 就不许它进全屏——于是 #btn-fullscreen 那条腿测到的
+    // 是"这张页排在第几"，而不是全屏。（本仓一趟 verify 会开好几个 session，撞上的就是它。）
+    await cdp.send('Page.bringToFront', {}, sessionId);
+    await sleep(120);
+    // 这一次求值带上用户激活（见 evaluate 上那段注释），并且它自己就是场景的全部生命周期，
+    // 所以要把激活用在前几秒：transient activation 在 Chrome 里只活 ~5 s。
     const out = await evaluate(`(async()=>{
       if (!window.__ng) throw new Error('scenarios.js never installed');
       const fn = window.__ng[${JSON.stringify(arg)}];
       if (typeof fn !== 'function') throw new Error('no such scenario: ' + ${JSON.stringify(arg)});
       const r = await fn();
       return JSON.stringify(r);
-    })()`);
+    })()`, true);
     // Console noise first, machine-readable line last: the parser in verify.sh takes the
     // final RESULT line, so a stray '{' in a log cannot hijack the report.
     if (logs.length) console.error(logs.slice(-40).join('\n'));

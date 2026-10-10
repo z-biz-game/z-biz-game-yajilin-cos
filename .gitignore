@@ -6,3 +6,4 @@ _site/
 *.log
 tools/shots/
 _tmp-*
+_scratch/
