@@ -36,7 +36,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const PATH_SRC = '[\\w./-]+?\\.[A-Za-z][A-Za-z0-9]{0,11}'; // 后缀不许写死：写死成某一族的语言时，本腿在那种仓里是哑的，而「0 条引用」读起来和「全核过」一模一样
 const CITE = new RegExp('^(' + PATH_SRC + '):([0-9]+(?:[,-][0-9]+)*)$');
-// 续引：完整引用后面只写行号（`js/main.js:120` 之后再写 `:124`）。本仓文档里就有这种写法，而这条腿
+// 续引：完整引用后面只写行号（`js/main.js:120` 之后再写 `:130`）。本仓文档里就有这种写法，而这条腿
 // 以前只认带路径的那一种，于是它报"每一条都在界内"时看的其实是文档的一部分。
 // 只向同一句里最近的那条完整引用借路径；正文里提到一个文件名不构成出处——宁可计入「无法定址」，
 // 也不要在错的文件上判绿（判绿比判红糟）。条数不写死在这里，由下面的覆盖面行与等值闸现数现钉。
@@ -244,31 +244,34 @@ export function run(ok) {
   // 续引的七把控制腿，全在内存里、盘上的文档一个字不动：
   // 借到 / 句尾墙 / 软换行仍算同一句 / 空行与新标题截断 / 借来的路径喂进边界检查 /
   // 正文里提到的文件名不是出处 / 同一句改写成完整引用就读得回来。
-  const cG = audit('`SUITES`（`tools/check.mjs:17`）、`got`（`:124`）');
+  // ⚠ 这里的 `:130` 与 `js/main.js:401` 是**钉在真实文件上的实数**：那两行必须真的含
+  // `got` / `setPaused`，锚点腿才有东西可查。钉的是实数、强度不变——哪一天被指的
+  // 文件挪了行，就要把这两处跟着挪回含那个名字的行上（挪到别的行上，这几把控制腿就哑了）。
+  const cG = audit('`SUITES`（`tools/check.mjs:17`）、`got`（`:130`）');
   ok(cG.refs.length === 2 && cG.cont === 1 && cG.unaddressed === 0 &&
     cG.outOfRange.length + cG.anchorBad.length === 0 && cG.refs.every((r) => r.path === 'tools/check.mjs'),
     'docs: 续引在同句内借到出处，并带上自己那一格的指认 · ' +
     [...cG.outOfRange, ...cG.anchorBad].join(' | ') + `（refs=${cG.refs.length} 借到=${cG.cont} 借不到=${cG.unaddressed}）`);
-  const cW = audit('`SUITES`（`tools/check.mjs:17`）。\n`got`（`:124`）');
+  const cW = audit('`SUITES`（`tools/check.mjs:17`）。\n`got`（`:130`）');
   ok(cW.refs.length === 1 && cW.unaddressed === 1,
     'docs: 句号把借的窗口关上：下一句的续引不许挂到上一句的出处上 · ' +
     `refs=${cW.refs.length} 借不到=${cW.unaddressed}`);
-  const cP = audit('`SUITES`（`tools/check.mjs:17`）、\n`got`（`:124`）');
+  const cP = audit('`SUITES`（`tools/check.mjs:17`）、\n`got`（`:130`）');
   ok(cP.refs.length === 2 && cP.unaddressed === 0,
     'docs: 软换行不算换句：同一句折行后续引照样借得到 · ' +
     `refs=${cP.refs.length} 借不到=${cP.unaddressed}`);
-  const cH = audit('`SUITES`（`tools/check.mjs:17`）\n\n## 续\n`got`（`:124`）');
+  const cH = audit('`SUITES`（`tools/check.mjs:17`）\n\n## 续\n`got`（`:130`）');
   ok(cH.refs.length === 1 && cH.unaddressed === 1,
     'docs: 空行与新标题同样截断这次借 · ' + `refs=${cH.refs.length} 借不到=${cH.unaddressed}`);
   const cB = audit('`SUITES`（`tools/check.mjs:17`）、`got`（`:99999`）');
   ok(cB.outOfRange.length === 1 && cB.outOfRange[0].includes('tools/check.mjs') && cB.outOfRange[0].includes('越界'),
     'docs: 借来的路径喂进边界检查：续引写一个越界的行号必须红，并点名被借的那个文件 · ' +
     (cB.outOfRange.join(' | ') || '（没红）'));
-  const cF = audit('这套名单住在 `check.mjs` 里，`got`（`:124`）');
+  const cF = audit('这套名单住在 `check.mjs` 里，`got`（`:130`）');
   ok(cF.refs.length === 0 && cF.unaddressed === 1,
     'docs: 正文里提到的文件名不是出处：这种写法必须算借不到，而不是在错的文件上判绿 · ' +
     `refs=${cF.refs.length} 借不到=${cF.unaddressed}`);
-  const cC = audit('这套名单住在 `check.mjs` 里，`got`（`tools/check.mjs:124`）');
+  const cC = audit('这套名单住在 `check.mjs` 里，`got`（`tools/check.mjs:130`）');
   ok(cC.refs.length === 1 && cC.unaddressed === 0 && cC.outOfRange.length + cC.anchorBad.length === 0,
     'docs: 同一句改写成完整引用就读得回来：上一条红的是写法，不是解析器漏了这一句 · ' +
     [...cC.outOfRange, ...cC.anchorBad].join(' | ') + `（refs=${cC.refs.length} 借不到=${cC.unaddressed}）`);
@@ -293,7 +296,7 @@ export function run(ok) {
   // 阳性对照：五种真注解写法 + 真行数必须判绿，否则上一条的"红"可能只是解析器自己坏了。
   const pkgLines = linesOf('package.json');
   const fwd = audit('`SUITES`（`tools/check.mjs:17`）、`tools/check.mjs:17`（`SUITES`）、`tools/check.mjs:17` 的 `SUITES`、' +
-    '`js/engine/generate.js:149`（`pSet(b, { candLimit })`）、`js/main.js:69`（`js/main.js::setPaused`）、' +
+    '`js/engine/generate.js:149`（`pSet(b, { candLimit })`）、`js/main.js:414`（`js/main.js::setPaused`）、' +
     '`tools/check.mjs:17`（`npm test`） 与 `package.json`（' + (pkgLines ? pkgLines.length : 0) + ' 行）');
   ok(fwd.outOfRange.length === 0 && fwd.anchorBad.length === 0 && fwd.refs.length === 6,
     `docs: 后向、前向括号、「的」、`+ '`path::symbol`、函数调用五种真注解加带空格的命令行 body 都在同一个解析器下判绿 · ' +

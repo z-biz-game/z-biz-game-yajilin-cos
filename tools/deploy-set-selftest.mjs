@@ -25,7 +25,7 @@ const COPIES = [];
 // （为的是 Chrome profile 和替身根不被 /tmp 清掉），于是 os.tmpdir() 成了 ROOT 的子目录，
 // 下面那句 cpSync 当场 EINVAL：「Cannot copy <repo> to a subdirectory of self」。一腿未跑、
 // 整道闸以 rc=1 收场——CI runner 的 TMPDIR 是 /tmp，所以这一类坏只在设备上出。
-// 这份临时目录由本进程自己创建、自己在 :313 删掉，不留证据，所以退回 /tmp 不违反"scratch 不放 /tmp"。
+// 这份临时目录由本进程自己创建、自己在下面那圈 COPIES 的 rmSync 处删掉，不留证据，所以退回 /tmp 不违反"scratch 不放 /tmp"。
 const TMP_BASE = (() => {
   const t = fs.realpathSync(os.tmpdir());
   const r = fs.realpathSync(ROOT);
@@ -167,11 +167,21 @@ function knife(tag, want, mutate, note) {
 let bad = 0;
 
 // X1 清单落后于页面：assemble 少收一类文件，产物里没有它而页面会去要。
-// 有位图目录（这一仓 55/59 走 icons/，2 个走 assets/）就砍那个 for 循环，期望由靶子自己决定，
-// 两个目录名都在针里；内联位图的仓没有位图目录可砍，就砍无条件那行的 css。
+// 有位图目录（本仓走 icons/ 与 assets/）就砍位图那个循环，期望由靶子自己决定；
+// 内联位图的仓没有位图目录可砍，就砍无条件那行的 css。
+//
+// ⚠ 刀口从仓里**现取**：写死一行字（例如 'for d in icons assets; do'）的话，清单一改
+// （目录名单变了、循环改成「源:去处」对照表）这一刀就打在空处，X1 静默失灵——
+// 台架最怕的就是「还绿着、其实已经不测了」。
 if (pngRefs.length) {
   if (!knife('X1 assemble 不收位图目录', ['R10', path.basename(pngRefs[0].target)], (dir) => {
-    edit(dir, 'tools/assemble-site.sh', 'for d in icons assets; do', 'for d in probe_missing_dir; do');
+    const asm = read(dir, 'tools/assemble-site.sh');
+    const loops = asm.split('\n').map((l) => l.trim()).filter((l) => /^for\s+(\w+)\s+in\s+.*;\s*do$/.test(l));
+    if (!loops.length) throw new Error('assemble-site.sh 里找不到形如 "for … in …; do" 的位图循环');
+    for (const l of loops) {
+      const v = l.match(/^for\s+(\w+)\s+in\s+.*;\s*do$/)[1];
+      edit(dir, 'tools/assemble-site.sh', l, `for ${v} in probe_missing_dir; do`);
+    }
   })) bad += 1;
 } else {
   if (!cssRefInArtifact) {

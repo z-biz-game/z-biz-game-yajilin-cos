@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  # ── job 1：node 侧的门（语法闸 + 纯度闸 + 六套 suite + golden 对账 + 剂量表）──────
+  # ── job 1：node 侧的门（语法闸 + 纯度闸 + 十二套 suite + golden 对账 + 剂量表）────
   check:
-    name: node gates (syntax + purity + six suites + golden + dose table)
+    name: node gates (syntax + purity + twelve suites + golden + dose table)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,10 +59,10 @@ jobs:
           set -eo pipefail
           node tools/check.mjs | tee check.log
 
-      # 数行这一步是**独立**的：check.mjs 内部也断言「七套 RESULT 全到」，但那是被测者自己数的。
+      # 数行这一步是**独立**的：check.mjs 内部也断言「十二套 RESULT 全到」，但那是被测者自己数的。
       # 崩在 spawn 之前、RESULT 行的格式改了、套件被改名——这三种都表现为「绿了但少跑了一套」，
       # 由这里按统一的 RESULT <name> ok=… checks=… fails=… 格式再数一遍。
-      - name: count the verdict lines (七套 + 聚合 = 8 行，缺行即红)
+      - name: count the verdict lines (十二套 + 聚合 = 13 行，缺行即红)
         run: |
           set -eo pipefail
           python3 - <<'PY'
@@ -73,7 +73,8 @@ jobs:
               if m:
                   rows.append(m.groups())
           names = [r[0] for r in rows]
-          need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe', 'store-test', 'check']
+          need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe',
+                  'store-test', 'frame-rate-test', 'behavior-test', 'keyboard-test', 'asset-test', 'sw-test', 'check']
           print('收到 %d 行 RESULT：%s' % (len(rows), ' '.join(names)))
           bad = [n for n in need if n not in names]
           for n, okv, c, f in rows:

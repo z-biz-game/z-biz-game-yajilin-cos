@@ -442,10 +442,22 @@
     for (const sheet of [...document.styleSheets]) {
       let rules = null;
       try { rules = sheet.cssRules; } catch { continue; } // 跨源样式表读不到；这条腿只认同源那几份
+      // ⚠ 下面两处必须按**这张样式表自己的地址**去解，不能按文档的基址：
+      //   1) CSSOM 给回来的是**未解析**的相对 url（'../assets/textures/x.png'）。浏览器是拿
+      //      「这张样式表的地址」去解它的；拿文档基址去解，那个 '..' 会把 /<仓库名>/ 前缀吃掉，
+      //      于是前缀形态下每张纹理都 404——这条腿此前在真浏览器里必然红。
+      //   2) Chrome 的序列化分两种：单层 background-image 写成 url("…")，多层写成 url(…)（不带引号）。
+      //      只认带引号的那一种，「html, body」上那层「纸纹 + 渐变」的多层背景就被整条漏掉，
+      //      于是「两张纹理」永远只数出一张。
+      const sheetBase = sheet.href || document.baseURI;
       for (const rule of [...(rules || [])]) {
         const bi = rule.style && rule.style.backgroundImage;
         if (bi && bi.includes('assets/textures/')) {
-          for (const m of bi.matchAll(/url\("([^"]+)"\)/g)) texUrls.push(m[1]);
+          for (const m of bi.matchAll(/url\(\s*(?:"([^"]+)"|'([^']+)'|([^)]+?))\s*\)/g)) {
+            const raw = (m[1] || m[2] || m[3] || '').trim();
+            if (!raw) continue;
+            texUrls.push(new URL(raw, sheetBase).href);
+          }
         }
       }
     }
@@ -663,11 +675,27 @@
     // 子资源必须真的拿到 2xx/3xx：前缀腿最容易出的事故是页面里写死一个绝对路径
     // （"/css/game.css"）——DOM 照样在、只有样式丢了，而且那声 404 只在控制台里响一下。
     // resource timing 的 responseStatus 是浏览器自己记的账，比「看直方图猜样式在不在」硬。
+    //
+    // ⚠ 但 responseStatus 有个盲区：**被 Service Worker 的 Cache API 接管的那一次请求，
+    // 浏览器没有网络响应可记，状态码就记成 0**。那一趟资源是**真的取到了**（Response.status
+    // 还是原码），只是「这一次没有状态码」。把它直接判成红，等于把「SW 缓存里那张图」读成 404。
+    // 本仓就会踩到：pause 按钮换图标的那张 play-48.png 是 SW 接管之后才被要的，
+    // 第二趟（重载证人那一趟）它就在 SW 的缓存里了 ⇒ 状态码 0 ⇒ 假红。
+    //
+    // 所以状态码读不到的那几条，单独再发一次请求（no-store：绕开缓存、直连网络）把**真实**状态码
+    // 读回来：真缺文件仍然是 404、真的 500 仍然是 500 ⇒ 这条腿比原来更严，不是更松。
     const res = performance.getEntriesByType('resource');
-    const badRes = res.filter((e) => !(e.responseStatus >= 200 && e.responseStatus < 400));
+    const badRes = res.filter((e) => e.responseStatus && !(e.responseStatus >= 200 && e.responseStatus < 400));
+    const noStatus = res.filter((e) => !e.responseStatus);
+    const refetchBad = [];
+    for (const e of noStatus) {
+      let st = 0;
+      try { st = (await fetch(e.name, { cache: 'no-store' })).status; } catch { st = 0; }
+      if (!(st >= 200 && st < 400)) refetchBad.push(`${st}<-${e.name.split('/').slice(-2).join('/')}`);
+    }
     ck('boot: 每一个子资源都真的 2xx/3xx（responseStatus 逐条读回；写死的根路径在前缀腿就死在这条）',
-      res.length >= 2 && badRes.length === 0,
-      `${res.length} 条资源：${badRes.slice(0, 4).map((e) => `${e.responseStatus}<-${e.name.split('/').slice(-2).join('/')}`).join(' ') || '全通'}`);
+      res.length >= 2 && badRes.length === 0 && refetchBad.length === 0,
+      `${res.length} 条资源：${[...badRes.map((e) => `${e.responseStatus}<-${e.name.split('/').slice(-2).join('/')}`), ...refetchBad].slice(0, 4).join(' ') || '全通'}`);
 
     // timeOrigin 是「这一趟真的换过文档」的证人：verify.sh 在同一条腿里把 boot 连跑两次，
     // 第二次的 timeOrigin 必须严格大于第一次——片段导航（同文档跳转）在这里会被当场抓到。
@@ -1553,7 +1581,8 @@
     const resumed = await advance(220);
     ck('pause: 恢复后时钟重新按墙钟走（不是一句只改了标签的假恢复）', resumed >= 50, `Δ=${resumed}`);
 
-    // js/main.js:311-312 那句注释承诺「换一局一定在走」。这一条就是它的台架：带着暂停换一局，
+    // js/main.js:341-343 那句「暂停态不属于这张新盘，一起清掉」承诺「换一局一定在走」。
+    // 这一条就是它的台架：带着暂停换一局，
     // newGame 若不解暂停，界面会显示「继续」而表一动不动——按钮与时钟各说各话，谁都不算红。
     el('btn-pause').click();
     await wait(30);

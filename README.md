@@ -21,14 +21,14 @@
 
 | 命令 | 做什么 | 出处 |
 |---|---|---|
-| `npm start` | 本机静态服务，端口 5326（根形态） | `package.json:8` 的 `start`、`server.cjs:64` 的 `DEFAULT_PORT` |
-| `npm test` | node 侧总门：语法闸 + 禁词源闸 + seed 源闸 + 六套 suite | `package.json:10` 的 `test`、`tools/check.mjs:1-2` 的 `RESULT` |
+| `npm start` | 本机静态服务，端口 5326（根形态） | `package.json:8` 的 `start`、`server.cjs:68` 的 `DEFAULT_PORT` |
+| `npm test` | node 侧总门：语法闸 + 禁词源闸 + seed 源闸 + 十二套 suite | `package.json:10` 的 `test`、`tools/check.mjs:1-2` 的 `RESULT` |
 | `npm run probe` | 只跑剂量表（成本与选择性的观测） | `package.json:17` 的 `probe`、`tools/generator-probe.mjs:19-23` 的 `ATTEMPTS` |
-| `npm run balance` | 平衡闸：按档量出货墙钟，现算 `budgetMs` / band 并当门判（CI 里有它自己那一步） | `package.json:18` 的 `balance`、`tools/balance.mjs:1-18` 的 `ATTEMPTS` |
-| `npm run ceiling` | 档外天花板：14×14 / 16×16 各四颗固定 seed，与本文 §五 那张表对账。**不进 CI** | `package.json:19` 的 `ceiling`、`tools/ceiling.mjs:1-18` 的 `DEFAULT_MAX_ATTEMPTS` |
-| `npm run verify` | 全闸：node 腿 + 真 Chrome + 真指针的六条腿 | `package.json:20` 的 `verify`、`tools/verify.sh:1-2` 的 `Chrome` |
+| `npm run balance` | 平衡闸：按档量出货墙钟，现算 `budgetMs` / band 并当门判（CI 里有它自己那一步） | `package.json:19` 的 `balance`、`tools/balance.mjs:1-18` 的 `ATTEMPTS` |
+| `npm run ceiling` | 档外天花板：14×14 / 16×16 各四颗固定 seed，与本文 §五 那张表对账。**不进 CI** | `package.json:20` 的 `ceiling`、`tools/ceiling.mjs:1-18` 的 `DEFAULT_MAX_ATTEMPTS` |
+| `npm run verify` | 全闸：node 腿 + 真 Chrome + 真指针的六条腿 | `package.json:21` 的 `verify`、`tools/verify.sh:1-2` 的 `Chrome` |
 
-端口 5326 / 5327 / 9378 是一批数，写死在 `server.cjs:64-65` 的 `PREFIX_PORT`、`tools/verify.sh:28-30` 的 `CDP_PORT`、
+端口 5326 / 5327 / 9378 是一批数，写死在 `server.cjs:69` 的 `PREFIX_PORT`、`tools/verify.sh:28-30` 的 `CDP_PORT`、
 `tools/playtest.cjs:32` 的 `CDP_PORT`。这三个号漂移的代价不是「连不上」而是「连上别人家的盘」，
 所以 `tools/verify.sh:71-77`（`port_busy`）在起跑前逐个做空号预检，占了号就直接 `exit 2`。
 
@@ -38,7 +38,7 @@
 
 规则的**真值审计器**只有一个：`verify(b)`，返回错误数组，空数组就是合法盘。
 UI 判胜走的就是它，没有第二套判定（`js/ui/game.js:8-9` 的 `verify`、`js/ui/game.js:306-309`（`status`）、
-`js/main.js:192-193` 的 `checkWin`）。
+`js/main.js:217` 的 `checkWin`）。
 
 | # | 规则 | 源码对应处 | 违反时 `verify()` 说的话 |
 |---|---|---|---|
@@ -67,8 +67,8 @@ UI 判胜走的就是它，没有第二套判定（`js/ui/game.js:8-9` 的 `veri
 ## 三、菜单档位表：三档进菜单，第四档量着但不给选
 
 下拉框列的是 `TIERS` 里 `inMenu: true` 的那三档（6×6 / 8×8 / 10×10），一处定义三处用
-（`js/engine/generate.js:35-40` 的 `TIERS` → `js/ui/puzzle.js:17` 的 `SIZES` → `js/main.js:562-568` 的 `sizeSelect`），默认 6×6
-（`js/main.js:25`、`js/main.js:570` 的 `DEFAULT_SIZE`）。**12×12 仍在这张表里被剂量表与平衡闸逐轮量着，只是从菜单摘掉了**：
+（`js/engine/generate.js:35-40` 的 `TIERS` → `js/ui/puzzle.js:17` 的 `SIZES` → `js/main.js:800-808` 的 `sizeSelect`），默认 6×6
+（`js/main.js:25`、`js/main.js:34` 的 `DEFAULT_SIZE`）。**12×12 仍在这张表里被剂量表与平衡闸逐轮量着，只是从菜单摘掉了**：
 新开不了，但玩家存档里那一局照旧续得上（`js/ui/puzzle.js:21-24` 的 `parseSize` 按整张 `TIERS` 解析）。
 为什么摘、代价是什么、以后想塞回来要动哪几行——都在 DESIGN 第七节，本节只报读数。
 
@@ -177,7 +177,7 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 现场念过的规则集合是 P2/P4/P5/P6/P9，引擎另报 P1/P3 有命中但流水里没露脸，P8/P10 命中 0。
 这一段量的四件事分别是「每次按都有新东西」「冲突那一步不落笔但点名是哪条规则」
 「提示的笔进撤销栈」「面板读数逐行等于引擎那份账」
-（`js/ui/game.js:314-340` 的 `nextLadder`、`js/main.js:193-211`、`tools/scenarios.js:1211-1217`、`tools/scenarios.js:1265-1267` 的 `hint`）。
+（`js/ui/game.js:314-340` 的 `nextLadder`、`js/main.js:193-211`、`tools/scenarios.js:1211-1217`、`tools/scenarios.js:1380-1382` 的 `hint`）。
 
 ### 承诺 3：关于「每颗线索单颗摘除后不再唯一」——代码实际证到的是这些
 
@@ -216,25 +216,27 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 | **不承诺菜单外的档能出货** | 仓内复跑器 `tools/ceiling.mjs` 用**同一套出货默认值**（`ATTEMPTS=60`、`FRACS=0.45/0.5/0.55`，`js/engine/generate.js:27-28` 的 `DEFAULT_MAX_ATTEMPTS`）打四颗**写死的** seed（`cl-14x14-0..3`、`cl-16x16-0..3`，不由日期派生）：本轮 2026-09-29 实测 **14×14 出货 0/4、16×16 出货 0/4**，八颗 seed 把 60 次换盘机会全部撞满；逐样本墙钟 14×14 `[3442 3131 3157 3407]` ms、16×16 `[4694 5540 5252 5772]` ms（load1 3.21→3.57，15 核，node v26.8.1），**每一颗都越过房子口径 2000 ms**。唯一废因仍是 PLATEAU（两档各累计 240 次），`COUNTER` 出现 0 次——`pSet` 推不到全解（`js/engine/generate.js:149-150` 的 `dead`）就 continue，压根走不到认证计数那一步（`js/engine/generate.js:155` 的 `countSolutions`），所以卡的不是 DP 成本。这两批观测值不写回代码：代码里钉的是 `RECORD` 那两张表（`tools/ceiling.mjs:54-55` 的 `walls`，14×14 `[3229 2983 3072 3131]`、16×16 `[4462 5283 5076 5546]`），C1 每次拿实测值去对**量级**（×[0.4, 3]）而不是逐位相等——复跑器每轮重测，锚只用来抓「机器或流水线变了」。⚠ 更早一版这里写的是「14×14 出 3/4、16×16 出 1/4、那颗 attempts 59/60、墙钟 `[633 1745 2961 3379]`」：那批数出自**仓外**的桌面筛探针（另一段 seed 空间，clone 之后重跑不出来），换成仓内这四颗 seed 就是 0/4——结论方向没变（只会更硬），文档以仓内可复跑的那份为准。现在这三档都不在菜单里（`js/engine/generate.js:35-40`）。 | `tools/ceiling.mjs:45-56` 的 `RECORD`、`tools/ceiling.mjs:110-135`、`js/engine/generate.js:28` 的 `PLATEAU` |
 | **不承诺 12×12 在任何机器上都在线内**（它就是因此被请出菜单的那一档） | 同一个 seed 空间、同一套默认值、同一个判据：本机四次复跑 p95 读成 1248 / 1254 / 1266 / 1342 ms（负载 2.74~4.79，15 核），线内；CI runner（2 核 ubuntu-latest，load1 0.82）读成 **p95 2985 ms**，线外（`tools/balance.mjs:67` 的 `MENU_P95_CEILING_MS` 那条绝对值线不动）。菜单顶档因此回到 10×10：本机 p95 208 ms（剂量表那一趟）/ 201 ms（平衡闸那一趟）、runner 458 ms，两台机器都在线内。**降级不等于免责**：12×12 仍被剂量表与 `tools/balance.mjs` 逐轮量（写下这句那一轮 16/16 出货、p95 1266 ms 照旧打印；包络改完之后本机两趟读 1253 / 1394 ms，见 §五），只是 `inMenu: false` ⇒ 下拉框里选不到；而「缩菜单躲门」这件事本身被 B6b 钉住——菜单顶档面积不许小于 10×10（`tools/balance.mjs:226-231` 的 `TOP_MENU`），要再往下缩就得同时改判据、README 与 DESIGN 那两张梯级表。存档里已有的 12×12 那一局照旧续得上（`js/ui/puzzle.js:21-24` 的 `parseSize`）。 | `js/engine/generate.js:35-40` 的 `TIERS`、`tools/balance.mjs:63-67`、`tools/balance.mjs:218-235` 的 `worstP95`、`tools/ceiling.mjs:33-37` 的 `RECORD` |
 | **不承诺 P10 是一条难度梯级** | 本轮 64 张出货盘上 P10 命中 0 盘（四档全 0），它的价值是健全性证人。这条被写成红线：命中盘数一旦不是 0 就直接红。 | `js/engine/pencil.js:17-19` 的 `allReachable`、`tools/generator-probe.mjs:82` 的 `hits` |
-| **不承诺「同一个 seed 永远同一张盘」跨版本成立** | seed→盘 是纯函数（判定路径上没有随机数也没有时钟），但**流水线一改版同一个 seed 就是另一张盘**。存档靠题面指纹对账，对不上就作废旧笔迹并当面向玩家说明。 | `js/engine/generate.js:168-175` 的 `shipBoard`、`js/ui/puzzle.js:26-30` 的 `fingerprintOf`、`js/store.js:84-90` 的 `resumeDiscarded`、`js/main.js:268-271` 的 `makeQuestion`、`js/main.js:294-297` 的 `resume` |
-| **不承诺「最坏 1.2 秒」** | 16 样本里 0 次「60 试全废」只说明这一批没撞封顶，不说明封顶不会被撞。12×12 观测到的最坏 attempts 已经是 55/60（这一档现在在档外；菜单三档本轮最坏 6 / 11 / 32，离 60 还远）。界面侧的降级路径是「再敲一颗 seed」，最多 8 颗，全失败就照直说 `NO_BOARD`。 | `js/main.js:26-28`、`js/main.js:275-291` 的 `MINT_TRIES`、`js/ui/puzzle.js:33-36` 的 `NO_BOARD` |
-| **不承诺文档全量对账**（下面那条文档腿只认它看得见的指认） | 它只读反引号里的 `文件:行号`，而且只认**贴着引用**写的那个名字：隔了半句的不算、写在正文里不带反引号的不算、`aria-label` 这种带连字符的名字不构成锚点。续引（完整引用后面只写冒号加行号的那种）只在**同一句内**向最近那条完整引用借路径，句号／分号／空行／新标题都截断这次借，借不到的计入「无法定址」而不是静默跳过；一个反引号里塞好几处（`:211 / :225` 那种带空格的）它仍解析不到；跨仓引用（`../别的仓/…` 那种）按形状分出去、只数不验，本轮跨仓引用 5 处。它证的是"印出来的行号还在它说的那几行里"，不是"文档每句话都对"。 | `tools/docs-test.mjs:58-67`（`tokOf`）、`tools/docs-test.mjs:110`（`shaped`）、`tools/docs-test.mjs:311-313`（`comma`）、`tools/docs-test.mjs:45-54`（`inheritedPath`） |
+| **不承诺「同一个 seed 永远同一张盘」跨版本成立** | seed→盘 是纯函数（判定路径上没有随机数也没有时钟），但**流水线一改版同一个 seed 就是另一张盘**。存档靠题面指纹对账，对不上就作废旧笔迹并当面向玩家说明。 | `js/engine/generate.js:168-175` 的 `shipBoard`、`js/ui/puzzle.js:26-30` 的 `fingerprintOf`、`js/store.js:84-90` 的 `resumeDiscarded`、`js/main.js:302` 的 `makeQuestion`、`js/main.js:369` 的 `resume` |
+| **不承诺「最坏 1.2 秒」** | 16 样本里 0 次「60 试全废」只说明这一批没撞封顶，不说明封顶不会被撞。12×12 观测到的最坏 attempts 已经是 55/60（这一档现在在档外；菜单三档本轮最坏 6 / 11 / 32，离 60 还远）。界面侧的降级路径是「再敲一颗 seed」，最多 8 颗，全失败就照直说 `NO_BOARD`。 | `js/main.js:26-28`、`js/main.js:314` 的 `MINT_TRIES`、`js/ui/puzzle.js:33-36` 的 `NO_BOARD` |
+| **不承诺文档全量对账**（下面那条文档腿只认它看得见的指认） | 它只读反引号里的 `文件:行号`，而且只认**贴着引用**写的那个名字：隔了半句的不算、写在正文里不带反引号的不算、`aria-label` 这种带连字符的名字不构成锚点。续引（完整引用后面只写冒号加行号的那种）只在**同一句内**向最近那条完整引用借路径，句号／分号／空行／新标题都截断这次借，借不到的计入「无法定址」而不是静默跳过；一个反引号里塞好几处（`:211 / :225` 那种带空格的）它仍解析不到；跨仓引用（`../别的仓/…` 那种）按形状分出去、只数不验，本轮跨仓引用 5 处。它证的是"印出来的行号还在它说的那几行里"，不是"文档每句话都对"。 | `tools/docs-test.mjs:58-67`（`tokOf`）、`tools/docs-test.mjs:110`（`shaped`）、`tools/docs-test.mjs:314-316`（`comma`）、`tools/docs-test.mjs:45-54`（`inheritedPath`） |
 
 ---
 
 ## 六、门禁形状（细节见 DESIGN.md）
 
-`node tools/check.mjs` 本轮：7 行 RESULT、六套合计 741 条断言、聚合 check 161 条、红 0。
-逐套：rule 48 / pencil 435 / counter 71 / golden-write 7 / golden-test 156 / generator-probe 24，
-聚合 check 161（本轮读数；其中下面那条文档腿并进来 24 项。语法门本轮扫 29 个文件；套件表 `tools/check.mjs:17-24` 的 `SUITES`，行数与格式判定 `tools/check.mjs:106-124` 的 `spawnSync`，
-外加产物边界那两条 grep 的 29 项 `tools/check.mjs:126-143` 的 `BOUNDARY`（14 个运行时文件 × 2 条，再加那条数量下限）——它们与 CI 用同一个正则，
+`node tools/check.mjs` 本轮：13 行 RESULT、十二套合计 1282 条断言、聚合 check 198 条、红 0。
+逐套：rule 48 / pencil 435 / counter 71 / golden-write 7 / golden-test 156 / generator-probe 24 /
+store 65 / frame-rate 12 / behavior 67 / keyboard 96 / asset 268 / sw 33，
+聚合 check 198（本轮读数；其中下面那条文档腿并进来 24 项。语法门本轮扫 38 个文件；套件表 `tools/check.mjs:17-30` 的 `SUITES`，行数与格式判定 `tools/check.mjs:114-130` 的 `spawnSync`，
+外加产物边界那两条 grep 的 33 项 `tools/check.mjs:139-147` 的 `BOUNDARY`（16 个运行时文件 × 2 条，再加那条数量下限）——它们与 CI 用同一个正则，
 本仓第一次推上去时 CI 就是红在这一条上，而当时本地全绿）。
 
 **文档行号对账**（`node tools/docs-test.mjs`，本轮 24 项、红 0）：它也被 `tools/check.mjs` 直接 import
-（第七道静态门，`tools/check.mjs:151` 的 `run`），所以 `npm test` 全绿时它已经算过一遍，断言并进上面那行聚合
-`check` 的 `checks`——它不占 `SUITES` 的名额，「六套 / 7 行 RESULT」那份名单一个字没改，理由与上面
-`balance` 那条 step 同一个（改名单要连着动 `tools/check.mjs:17-24`、`tools/verify.sh:265` 的 `need`、
-`.github/workflows/ci.yml:76` 的 `need` 与两处「六套」注释）。这条腿把本文与 DESIGN 里挂在反引号里的 `文件:行号`
+（第七道静态门，`tools/check.mjs:157-158` 的 `run`），所以 `npm test` 全绿时它已经算过一遍，断言并进上面那行聚合
+`check` 的 `checks`——它不占 `SUITES` 的名额。`SUITES` 与那两份 `need` 名单本轮一起从六/七条补成十二条
+（并线把远端那侧新增的六套并了进来，名单还停在旧数上——CI 那边只认七套，少跑五套它照样绿），
+「十二套 / 13 行 RESULT」是本轮的口径；改名单要连着动 `tools/check.mjs:17-30`、`tools/verify.sh:265` 的 `need`、
+`.github/workflows/ci.yml:76` 的 `need` 与那几处「十二套」注释。这条腿把本文与 DESIGN 里挂在反引号里的 `文件:行号`
 读回来对账：本轮解析 346 条（跨仓引用 5 处只数不验，其余逐条要求在盘上、在界内）、无法定址 0 处；其中 285 条贴着引用写了指认（
 `name`（`path:NN`）、`path:NN`（`name`）、`path:NN` 的 `name`、`path:NN`（`fn(a, b)`）、
 `path:NN`（`dir/file.js::symbol`）五种贴法），那些还额外要求被指的那几行里**真的有**那个名字。
@@ -263,7 +265,7 @@ DP 节点 max 825，暴力+DP 墙钟 max 1 ms（判据 `tools/counter-test.mjs:6
 `node tools/balance.mjs` 本轮：`RESULT balance ok=true checks=42 fails=0`（16 张/档、
 load1 3.22→3.42、node v26.8.1；换到包络口径后又复跑一趟，load1 5.30→9.05、同样 checks=42 fails=0）。它在 CI 里是 `check` job 的一条**独立 step**
 （`.github/workflows/ci.yml:89-114` 的 `check.mjs`），**不是**第七套 suite：加进 `SUITES`
-就得同时改 `tools/check.mjs:17-24` 的 `SUITES`、`tools/verify.sh:265` 的 `need` 列表和上面那些「六套」注释。
+就得同时改 `tools/check.mjs:17-30` 的 `SUITES`、`tools/verify.sh:265` 的 `need` 列表和上面那些「十二套」注释。
 它按档现算定价式 **`budgetMs = max(10, ceil(p95 × 4 / 10) × 10)`**（单位 ms，向上取整到 10 ms、地板 10 ms；
 绝对值逐档打印，需求卡那条「不许用『中位×2』当基线」在这里落实——`med` 进不了这个式子），
 band 用 **`[max(1, floor(med × 0.4)), max(lo + 1, ceil(p95 × 1.6))]`**；两个式子都抄自
@@ -299,17 +301,17 @@ band 用 **`[max(1, floor(med × 0.4)), max(lo + 1, ceil(p95 × 1.6))]`**；两�
 这一轮动档位表只动了 `inMenu` 这个开关（w/h 与出货默认值一根没改），浏览器闸照例整趟重跑了一遍
 （条数是每一轮现量的，写在下面第六节那一趟的读数里，不在这里复述），
 而且菜单形状本身成了 boot 场的一条新断言：下拉里能选到的必须逐字等于引擎 `TIERS` 里 `inMenu` 的那几档
-（`tools/scenarios.js:447-454` 的 `optKeys`）。
+（`tools/scenarios.js:669` 的 `optKeys`）。
 
 `npm run ceiling` **不进 CI**：它是量天花板的，不是门，写进 CI 就变成每天重测一次结论。
 本轮 23 条断言、红 0：参照批（菜单顶档 10×10 六颗 seed）现量 p95 384 ms，14×14 / 16×16 仍 0/4 且
 颗颗撞满 60 次换盘，八颗逐样本 3131~3407 / 4694~5772 ms，全部越过房子口径 2000 ms。
 
-`bash tools/verify.sh` 本轮 ALL GREEN（退出码 0，日志 `_tmp-yajilin-verify-full-r3.log`；
-这一趟跑在改完文件之后的树上，上面那些条数就是它打印的）：
-334 条浏览器断言、红 0——
-root 10 场 143 条、prefix 10 场 143 条、mobile 3 场 48 条；
-九场逐场为 boot 20 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14 / pause 23
+`bash tools/verify.sh` 本轮 ALL GREEN（退出码 0；逐场读数落在 `_tmp-verify/summary.tsv`，跑完即清，
+上面那些条数就是它打印的）：
+414 条浏览器断言、红 0——
+root 10 场 175 条、prefix 10 场 175 条、mobile 3 场 64 条；
+九场逐场为 boot 36 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14 / pause 23
 （boot 在同一条腿里连跑两次，所以 10 场 = 这九场 + 第二次 boot）；
 两条桌面腿的逐场条数**逐条相同**（pause 都是 23 条、`fs` 都读到 `entered`），这一格是本轮现量的，
 不是「两趟都写了 ALL GREEN」；
@@ -322,11 +324,11 @@ DESIGN 第七节写着这条口径）：写在这里是为了让读数有出处�
 
 ### pause 场：顶栏那三颗按钮点下去要发生它们写着的那件事（本轮新增）
 
-引擎里早就有一套真暂停（`js/main.js:69` 的 `setPaused`）和一个真全屏开关（`js/main.js:640` 的
-`bindFullscreen`），顶栏上也真有 `#btn-pause` / `#btn-fullscreen` 两颗按钮——可是 `tools/scenarios.js`
+引擎里早就有一套真暂停（`js/main.js:414` 的 `setPaused`）和一个真全屏开关（`js/main.js:474` 的
+`toggleFullscreen`），顶栏上也真有 `#btn-pause` / `#btn-fullscreen` 两颗按钮——可是 `tools/scenarios.js`
 里那张手写的常显控件名册有 `btn-motion`，偏偏没有这两颗，于是那八场场景一次都没点过它们。后果不是"少测两条"这么简单：
-`js/main.js:311-312` 的 `paused` 那句「换一局一定在走」的注释、`js/main.js:616-618` 的 `paused` 那三行「—— 暂停：给闸台读的那张脸 ——」
-（`get paused()` / `setPaused` / `simClock`）在整个仓里没有任何一处代码为它们担保。
+`js/main.js:345-347` 的 `pausedAt` 那句「暂停态不属于这张新盘」、`js/main.js:853-854` 的 `paused` 那个门面 getter
+（连同 `setPaused` / `simClock`）在整个仓里没有任何一处代码为它们担保。
 
 这一场只读玩家拿得到的东西：按钮上的文字与 `aria-pressed`、`document.fullscreenElement`、
 `#board-wrap` 的矩形与视口尺寸，加上 `simClock()` 那个正在推进的数（`paused` 只当第三个证人用）。
@@ -335,7 +337,7 @@ DESIGN 第七节写着这条口径）：写在这里是为了让读数有出处�
 1. **暂停是真冻结**：700 ms 之后 Δ 恰好等于 0，不是"变慢了"。
 2. **恢复的第一帧不倒灌**：跳幅上界 200 ms 是一个固定余量，不是速度预算——`setTimeout` 从不提前，
    机器慢只会让等待更长，把机器噪声算进跳幅就是在罚机器而不是罚代码。
-3. **暂停中换一局，按钮与时钟不许各说各话**：这一条就是 `js/main.js:311-312` 的 `paintPause` 那句注释的台架。
+3. **暂停中换一局，按钮与时钟不许各说各话**：这一条就是 `js/main.js:345-347` 的 `pausedAt = 0` 那句注释的台架。
 
 全屏那条腿读的是**焦点**：headless Chrome 里 `Element.requestFullscreen()` 要一次真实的用户激活，
 而一个不在最上层的标签页 `document.hasFocus()` 是 false、会被直接拒——两种结局的断言条数不一样。
@@ -357,9 +359,9 @@ DESIGN 第七节写着这条口径）：写在这里是为了让读数有出处�
 | K6 | `aria-pressed` 写反 | 两条标签红 + 那条一致性红 |
 | K7 | 把 `#btn-pause` 改名 | 5 条点名红；这一刀砸的其实不是判据而是整张页面 |
 
-K7 是本轮的第二个发现：`js/main.js:549` 的 `addEventListener` 那句 `$('btn-pause').addEventListener(...)` 没有守卫，
+K7 是本轮的第二个发现：`js/main.js:777` 的 `addEventListener` 那句 `$('btn-pause').addEventListener(...)` 没有守卫，
 空 id 会让 app 死在模块求值里、`window.yajilin` 从来没被赋值（`#btn-fullscreen` 那一颗是有守卫的，
-`js/main.js:641` 的 `getElementById` 找不到就直接不装）。这一刀第一次跑出来的不是点名红，而是 boot 场整场 THROW
+`js/main.js:914` 的 `getElementById` 找不到就直接不装）。这一刀第一次跑出来的不是点名红，而是 boot 场整场 THROW
 （`Cannot read properties of undefined (reading 'game')`）——红落在异常文本上，读的人得去猜是哪条腿。
 所以闸台自己补了两处：boot 的 `const a = A()` 改成 `A() || {}`，pause 的名册两条挪到需要 surface 的腿之前、
 再加一条 `pause: 暂停那张脸在`。app 侧那句无守卫的 `addEventListener` **本轮没动**：改它要么让按钮静静消失、
@@ -390,8 +392,10 @@ js/render/board.js         画布：读同一批数字
 js/store.js                localStorage 存档 + 指纹对账
 js/main.js                 装配层：按钮、指针、时钟、seed
 server.cjs                 零依赖静态服务（5326 / 5327）
-tools/check.mjs            node 侧总门（静态门 + 六套 + RESULT 数行）
+tools/check.mjs            node 侧总门（静态门 + 十二套 + RESULT 数行）
 tools/{rule,pencil,counter,golden}-test.mjs  四套单测
+tools/{store,frame-rate,behavior,keyboard,asset,sw}-test.mjs  另外六套单测（存档 / 帧率 / DOM 行为 / 键盘 / 资产 / SW）
+tools/docs-test.mjs         文档行号对账（静态门，不占 SUITES 的名额）
 tools/write-golden.mjs     冻结快照；--check 是只读对照
 tools/generator-probe.mjs  剂量表 + 红线
 tools/balance.mjs          平衡闸：出货墙钟定价（budgetMs / band），CI 里的独立 step
@@ -405,7 +409,7 @@ tools/playtest.cjs         裸 CDP 驱动（Node 22 全局 WebSocket/fetch）
 出货目录里**不含** `tools/`：Pages 的名单只拷 `index.html`、`css/`、`js/`
 （`.github/workflows/pages.yml:40-41`、`.github/workflows/pages.yml:29-34` 的 `allowlist`），
 而 `tools/golden.mjs` 冻结的是每张出货盘的认证解——它是答案，不许被服务出去
-（`tools/golden.mjs:19` 的 `pages.yml`、`tools/verify.sh:341-344` 的 `reference.mjs`）。
+（`tools/golden.mjs:19` 的 `pages.yml`、`tools/verify.sh:427` 的 `reference.mjs`）。
 
 ## 上线的到底是哪一批文件
 

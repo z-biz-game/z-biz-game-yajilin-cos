@@ -109,42 +109,48 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
 `tools/check.mjs` 的顺序是有理由的，三段依次是：
 
 1. **语法门**：`node --check` 扫 `js/` 与 `tools/` 下每个 `.js/.mjs/.cjs`
-   （`tools/check.mjs:39-46` 的 `spawnSync`，本轮 29 个文件——tools/ 下新增的 balance、ceiling 与 docs-test 也在扫描范围内）；
+   （`tools/check.mjs:46-52` 的 `spawnSync`，本轮 38 个文件——tools/ 下新增的 balance、ceiling 与 docs-test 也在扫描范围内）；
 2. **禁词源闸**：6 个引擎文件 × 7 个禁词（`process.env` / `Math.random` / `Date.now|new Date` /
    `performance.now` / `require(` / `node:` 导入两种写法），**注释外**零命中
    （`tools/check.mjs:53-70` 的 `FORBID`，本轮读成「6 个引擎文件 × 7 个禁词，注释外零命中」）；
 3. **seed 源闸**：读 `js/main.js` 源码，要求 `mintSeed()` 体内出现
    `crypto.getRandomValues` 与 `seedCounter++`，且不得出现任何时间源，
    连 `seedCounter` 的**初值**也要过同一批禁词；最后还要求「换一局」「再来一局」两颗按钮
-   真的都走到 `newGame({})`（`tools/check.mjs:72-103`，本轮读成「mintSeed 体内 7 行，零时间源；初值="0"」）。
+   真的都走到 `newGame({})`（`tools/check.mjs:103-108`，本轮读成「mintSeed 体内 7 行，零时间源；初值="0"」）。
 
 为什么要跑在逻辑门前面，`tools/check.mjs:4-6` 给了答案：引擎里混进一个 `process.env` 或
 `Math.random`，逻辑测试**当天**还是全绿（node 恰好有那个环境变量、或随机数恰好站在正确答案那边），
 红的是三个月后的部署站点或另一台机器。同理，「默认 seed 不许按日期算」这句话**不能**用
 「跑一遍看 seed 长什么样」来证——同一天连铸两颗也会因自增而各不相同，日期当 seed 反而看不出来，
-所以只能读源码（`tools/check.mjs:72-77` 的 `mintSeed`）。
+所以只能读源码（`tools/check.mjs:78-89` 的 `mintSeed`）。
 
-4. **六套 suite**：rule / pencil / counter / golden-write(`--check`) / golden / generator-probe
-   （`tools/check.mjs:17-24` 的 `SUITES`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24，聚合 161（语法门 29 个文件），红 0
-   （聚合里除了「六套齐 + 逐行格式」还有下面第 6 条那 29 项边界断言与第 7 条那 24 项文档对账）；
-   口径提醒：`tools/check.mjs:17-24` 的 `SUITES` 数组与 `tools/verify.sh:265` 的 `need` 列表都是六条，
-   `tools/verify.sh:245` 的 `echo` 那行也念「六套」。
+4. **十二套 suite**：rule / pencil / counter / golden-write(`--check`) / golden / generator-probe /
+   store / frame-rate / behavior / keyboard / asset / sw
+   （`tools/check.mjs:17-30` 的 `SUITES`），本轮逐套 48 / 435 / 71 / 7 / 156 / 24 / 65 / 12 / 67 / 96 / 268 / 33，
+   合计 1282，聚合 198（语法门 38 个文件），红 0
+   （聚合里除了「十二套齐 + 逐行格式」还有下面第 6 条那 33 项边界断言与第 7 条那 24 项文档对账）；
+   口径提醒：`tools/check.mjs:17-30` 的 `SUITES` 数组与 `tools/verify.sh:265` 的 `need` 列表都是十二条，
+   `tools/verify.sh:245` 的 `echo` 那行也念「十二套」。
    曾经有四行**注释**写着「五套 / five suites」（`tools/verify.sh:241` 的 `suite`、`.github/workflows/ci.yml:13` 的 `suite`、
-   `:15` 的 `suites`、`:131` 的 `gate`），当时逐行改成「六套 / six suites」，行数一根没动。
+   `:15` 的 `suites`、`:133` 的 `gate`），当时逐行改成「六套 / six suites」，行数一根没动。
    ⚠ 后来加 balance 那条 step 时**动了** `ci.yml` 的行数（148 → 175 行，插入点在原 87 行之后），
    所以 `.github/workflows/ci.yml:13`、`:15`、`:26-42`、`:62-64`、`:65-87` 这几处照旧有效，而写「SKIP_UNIT」那两行注释的原第 104 行
-   漂到 `:131`、浏览器侧数场数那步的原第 111-121 行漂到 `:138-148`——本文这两处本轮都逐条 grep 回真名。
+   漂到 `:141-142`、浏览器侧数场数那步的原第 111-121 行漂到 `:148-151`——本文这两处本轮都逐条 grep 回真名。
    核对过历史：这四行不是后来漂走的——引入六条 `SUITES` 的那颗提交（`65602f7`）里，
    `ci.yml` 就已经写着「five suites」，`verify.sh` 晚些写成时又抄了同一句旧话（`git show 65602f7:tools/check.mjs`
    的 `SUITES` 已是六条，`git show 65602f7:.github/workflows/ci.yml` 第 14 行是 five suites）。
    值得记下来的区别是：判据本身（数组、`need` 列表、`got.length === SUITES.length` 那条等式）
    从头到尾没变少过，坏的只是注释——所以这一处不是「门松了」，是「门上贴的标签错了」。
-   本轮以实跑的 7 行 RESULT（六套 + 聚合）为准。
+   ⚠ 本轮又是一次「标签落后于判据」：并线把远端那侧新增的六套（store / frame-rate / behavior /
+   keyboard / asset / sw）并了进来，`SUITES` 变成十二条，而那几处**注释与 need 名单**还停在六/七条。
+   标签本轮一并改回十二条，两份 `need` 名单也补齐十二条——否则 CI 那一侧数行时只认七套，
+   少跑五套它照样绿（`check.mjs` 内那条 `got.length === SUITES.length` 仍会红，但那是被测者自己数的）。
+   本轮以实跑的 13 行 RESULT（十二套 + 聚合）为准。
 5. **数 RESULT 行数**：每套自己那行 `RESULT <name> ok=… checks=… fails=…` 原样再念一遍
-   （`tools/check.mjs:118-122` 的 `console.log`），并且 `got.length === SUITES.length`（`tools/check.mjs:124` 的 `SUITES.length`）。
+   （`tools/check.mjs:127-128` 的 `console.log`），并且 `got.length === SUITES.length`（`tools/check.mjs:130` 的 `SUITES.length`）。
    为什么行数要单独数：`tools/check.mjs:8-9` 的 `RESULT`——套件被改名、被漏跑、spawn 失败但退出码没传上来，
    这三种都表现为「绿了，但少跑了一套」。CI 那一侧**再独立数一遍**
-   （`.github/workflows/ci.yml:65-87` 的 `verdict`，缺行即红），理由是「check.mjs 内部也断言六套全到，
+   （`.github/workflows/ci.yml:65-87` 的 `verdict`，缺行即红），理由是「check.mjs 内部也断言十二套全到，
    但那是被测者自己数的」（`.github/workflows/ci.yml:62-64` 的 `RESULT`）；
 6. **分层闸**：两条 grep 把「`js/` 不许 import `tools/`」「运行时产物不许提到 `tools/` 下的任何门禁文件」
    钉死（`.github/workflows/ci.yml:26-42`，`tools/check.mjs:126-143` 的 `BOUNDARY` 用**同一个正则**在本地再跑一遍）。
@@ -157,10 +163,10 @@ PLATEAU 12 / 38 / 111 / 361，`UNSOUND_PENCIL`、`ROUND_LIMIT`、`COUNTER`、`BA
    「本地绿」与「CI 绿」根本不是同一件事，因为这两条 grep 原先只有 CI 有。
    修法是把门搬到本地（不是把 CI 那条放宽）：注释改指 DESIGN 的对应小节，
    正则与 CI 逐字一致，同样**不分注释**（grep 不知道哪段是注释，所以门也不假装知道）。
-   本轮读成「边界门：14 个运行时文件 × 2 条 grep，与 CI 同正则」（`tools/check.mjs:143` 的 `console.log`）；
-   「零命中」是它判的、不是它印的：`tools/check.mjs:140` 的 `BOUNDARY`、`tools/check.mjs:141` 的 `IMPORT_TOOLS`
+   本轮读成「边界门：14 个运行时文件 × 2 条 grep，与 CI 同正则」（`tools/check.mjs:149` 的 `console.log`）；
+   「零命中」是它判的、不是它印的：`tools/check.mjs:139` 的 `BOUNDARY`、`tools/check.mjs:140` 的 `IMPORT_TOOLS`
    两条都不许命中。
-7. **文档行号对账**（`tools/docs-test.mjs`，`tools/check.mjs:145-154` 的 `run`）：本文与 README 里每个数字后面
+7. **文档行号对账**（`tools/docs-test.mjs`，`tools/check.mjs:157-158` 的 `run`）：本文与 README 里每个数字后面
    都挂着 `文件:行号`，这句「行号指本仓代码」必须有机器读回来。它只读反引号里的引用，逐条要求
    文件在盘上、行号在界内；贴着引用写的那个名字（五种贴法）还额外要求**真的出现在被指的那几行里**。
    续引（完整引用后面只写冒号加行号）向同一句里最近那条完整引用借路径，句号／分号／空行／新标题都截断；
@@ -196,10 +202,10 @@ B6b 菜单形状（防降级），本轮 checks=42 fails=0）。两个式子逐�
 不是某一台机器的单次读数——为什么与代价都在 §七 第二格。
 
 它为什么以**独立 step** 进 CI（`.github/workflows/ci.yml:89-114` 的 `check.mjs`）而不进 `SUITES`：
-`SUITES` 加一条就是「七套」，`tools/check.mjs:17-24` 的 `SUITES` 数组、`tools/verify.sh:265` 的 `need` 列表、
-`tools/verify.sh:245` 的 `echo` 那行、上面第 4 条整段「六套」的账、CI 里数行那份 `need`
+`SUITES` 加一条就是「十三套」，`tools/check.mjs:17-30` 的 `SUITES` 数组、`tools/verify.sh:265` 的 `need` 列表、
+`tools/verify.sh:245` 的 `echo` 那行、上面第 4 条整段「十二套」的账、CI 里数行那份 `need`
 （`.github/workflows/ci.yml:76` 的 `need`）全要跟着改。这一族刚在「标签写着五套、判据跑的是六套」上红过一次
-（第 4 条记着全过程），所以本轮把改动面压成「一个 step + 一句 RESULT 判定」，六套这个数一根手指都没碰。
+（第 4 条记着全过程），所以本轮把改动面压成「一个 step + 一句 RESULT 判定」，十二套这个数一根手指都没碰。
 收的判据只有一条：拿到 `RESULT balance` 行，且 `ok=true`、`fails=0`、`checks>0`。
 
 `tools/ceiling.mjs`（`npm run ceiling`）**不进 CI**——它是量天花板的，不是门，
@@ -213,21 +219,21 @@ B6b 菜单形状（防降级），本轮 checks=42 fails=0）。两个式子逐�
 
 | 腿 | 断言什么 | 本轮读数 | 出处 |
 |---|---|---|---|
-| 1 unit | 上面那六套 + 四道读源码的静态门（语法 / 禁词 / seed / 文档行号） | 7 行 RESULT、六套 741 条、聚合 check 161 条、红 0、退出码 0 | `tools/verify.sh:241-271` 的 `check.mjs` |
-| 2 root | 根形态 `http://127.0.0.1:5326/` 上九场真指针 | 10 场 143 条断言 红 0 | `tools/verify.sh:295-308` 的 `start_chrome` |
-| 3 prefix | Pages 前缀形态（替身根由 symlink 按部署名单搭） | 10 场 143 条 红 0 | `tools/verify.sh:311-339` 的 `PROOT` |
+| 1 unit | 上面那十二套 + 四道读源码的静态门（语法 / 禁词 / seed / 文档行号） | 13 行 RESULT、十二套 1282 条、聚合 check 198 条、红 0、退出码 0 | `tools/verify.sh:241-271` 的 `check.mjs` |
+| 2 root | 根形态 `http://127.0.0.1:5326/` 上九场真指针 | 10 场 175 条断言 红 0 | `tools/verify.sh:295-308` 的 `start_chrome` |
+| 3 prefix | Pages 前缀形态（替身根由 symlink 按部署名单搭） | 10 场 175 条 红 0 | `tools/verify.sh:311-339` 的 `PROOT` |
 | 4 deploy-list | 名单外的必须 404、名单内的必须 200 | 44 条 404 + 5 条 200 | `tools/verify.sh:341-372` 的 `http_code` |
-| 5 mobile | 390×844 @ dpr3 的 **CDP 会话内**覆写 | 3 场 48 条 红 0 | `tools/verify.sh:380-399` 的 `MOBILE_SCENARIOS` |
+| 5 mobile | 390×844 @ dpr3 的 **CDP 会话内**覆写 | 3 场 64 条 红 0 | `tools/verify.sh:410` 的 `MOBILE_SCENARIOS` |
 | 6 live | 线上真部署那份字节（要网络） | 本轮没打 | `tools/verify.sh:402-424` 的 `LIVELEG` |
 | 汇总 | 腿×场的并表 + 地板判定 | 合计 334 条浏览器断言 红 0，ALL GREEN | `tools/verify.sh:443-465` 的 `tot` |
 
 九场的逐场条数（root，本轮）：boot 20 / render 14 / play 14 / marks 15 / resume 8 / wrong 7 / win 8 / hint 14 / pause 23。
 `root` 是 **10 场**而不是 9 场，因为场景表写的是 `boot boot render play marks resume wrong win hint pause`
-（`tools/verify.sh:292` 的 `DEFAULT_SCEN`）——boot 在同一条腿里连跑两次，第二次的 `performance.timeOrigin` 必须
-**严格大于**第一次（`tools/verify.sh:150-152` 的 `timeOrigin`、`tools/scenarios.js:465-466` 的 `timeOrigin`）。
+（`tools/verify.sh:293` 的 `DEFAULT_SCEN`）——boot 在同一条腿里连跑两次，第二次的 `performance.timeOrigin` 必须
+**严格大于**第一次（`tools/verify.sh:150-152` 的 `timeOrigin`、`tools/scenarios.js:709` 的 `timeOrigin`）。
 这一条专门抓「片段导航冒充重载」：`BASE#expect=` 那种同文档跳转连 JS 上下文都不换，
 读数照样「对」，但玩家从来没有真的重载过页面。
-`mobile` 只跑与形状有关的三场（boot / render / play，`tools/verify.sh:391` 的 `MOBILE_SCENARIOS`），
+`mobile` 只跑与形状有关的三场（boot / render / play，`tools/verify.sh:410` 的 `MOBILE_SCENARIOS`），
 20 + 14 + 14 = 48，与本轮读数吻合。
 
 ### 为什么 prefix 形态必须单测（这一族付过学费的那一条）
@@ -242,18 +248,18 @@ Pages 上线的站点 404。** 原因是 Pages 把部署目录挂在 `/<仓库�
 并由 `.github/workflows/pages.yml:42-43` 的 `_site` 那一步在产物侧反向核对「名单外的文件不许进 `_site`」。
 `index.html:5-7` 的 `base` 注释把「不写 `<base>`、资源全走相对路径」写成显式约定，
 浏览器侧则由 boot 场逐条读回每个子资源的 `responseStatus`
-（`tools/scenarios.js:461` 的 `responseStatus`）——写死的根路径在前缀腿就是死在这条断言上，而不是死在人工报修。
+（`tools/scenarios.js:679-680` 的 `responseStatus`）——写死的根路径在前缀腿就是死在这条断言上，而不是死在人工报修。
 
 第 4 条腿是第 3 条腿的**反证**：光有「前缀下页面能打开」还不够，必须同时证明
 `tools/`、仓库根的 `*.md`、`package.json`、工作流文件在这棵根下**够不到**
 （本轮 44 条 404：`tools/` 那 38 个文件里含闸自己落的 21 张 shots，所以这一格会随复跑变，口径见 README 第六节），并且反向要求名单内 5 条真的 200
 （`tools/verify.sh:353-372` 的 `code`）——没有后半句，那一串 404 只是因为整棵树都在 404。
 
-汇总腿的地板（`tools/verify.sh:443-461` 的 `known`）同样是为「假绿」写的：
+汇总腿的地板（`tools/verify.sh:465-467` 的 `known`）同样是为「假绿」写的：
 零断言的场景直接红、场景名不在那张九场集合里红（场景表漂了或 `__ng` 少装一个都会这样）、
 `root` 与 `prefix` 两条腿**都必须含那九场**（少了就是「浏览器闸只跑了一遍却被写成两遍」）、
 总断言数 `< 60` 也红。CI 那一侧再按 `{'root': 10, 'prefix': 10, 'mobile': 3}` 数一遍场数
-（`.github/workflows/ci.yml:147-157` 的 `need`）。
+（`.github/workflows/ci.yml:158-160` 的 `need`）。
 
 还有两条容易漏的「不是断言的断言」：每条腿的控制台里但凡出现 `[EXCEPTION]` 或 `[log:error]`
 这一趟就不算干净（`tools/verify.sh:236-243` 的 `EXCEPTION`，本轮三条腿各 0 行），因为 404 与未捕获异常
@@ -323,7 +329,7 @@ socket 全路径 40 字节上下。**判据一根没动**：本机复跑 `bash t
 前面几条腿的绿撑着，只有最后一行是红的。
 修法不动 `tools/verify.sh:39` 的 `TMPDIR`（那条平台策略是对的，本轮三个 Chrome profile 又确实活在 `_tmp-mk/`
 直到跑完）：让台架自己保证副本在树外——`tools/deploy-set-selftest.mjs:29-33` 的 `TMP_BASE`
-一旦发现 `os.tmpdir()` 落在 `ROOT` 之内就退回 `/tmp`，副本由本进程创建、同文件 `:323` 的 `rmSync` 删掉，
+一旦发现 `os.tmpdir()` 落在 `ROOT` 之内就退回 `/tmp`，副本由本进程创建、同文件 `:333` 的 `rmSync` 删掉，
 不是要留下的证据，所以不受"scratch 别放 /tmp"那条约束。判据一根没动：
 `TMPDIR=$PWD/_tmp-mk node tools/deploy-set-selftest.mjs` 从 rc=1 变 rc=0（本轮实测，
 `_tmp-yajilin-dsselftest-r1.log`），X1-X13 每一刀的点名红与 `TMPDIR=/tmp` 那一趟逐字相同。
@@ -345,14 +351,14 @@ POSIX 给的正是 `ENOTEMPTY`。本机不炸是因为 macOS 上 Chrome 退出�
 非零就退出——于是它越过了"清理失败不该影响判据"这条界线。
 
 修法两处，都在原行内改（`tools/verify.sh:211`、`:214-216`、`:220-224`、`:225` 的 `CPID` 这四处在那份 468 行的文件里一个没漂；
-今天这份是 `tools/verify.sh`（473 行），多出来的行在别处）：
+今天这份是 `tools/verify.sh`（492 行），多出来的行在别处）：
 `tools/verify.sh:207`（`note`）变成"最多重试 6 次、每次隔 0.25 s，之后若还有残留就打一行 `note`，绝不退出"；
 cleanup 里的 UDD 那一行（`tools/verify.sh:194` 的 `$UDD`）同理加 `|| true`。这里要说清**为什么删不净不削弱承诺**：这一腿的"全新
 profile"是由 `tools/verify.sh:211`（`mktemp`）的 `mktemp -d` 给一个新路径来担保的，不是由"上一个目录被删掉了"担保的，
 残留只占 runner 那块临时盘。把这条写下来是因为它正好是会被顺手写成 `exit` 的那种地方——
 用一个判据之外的失败去红，比用一个判据之内的失败去绿更糟。
 
-顺带记一笔这一红能读出来的原因：`tools/verify.sh:443-465`（`known`）那条汇总地板规定"每条腿的场数
+顺带记一笔这一红能读出来的原因：`tools/verify.sh:466-468`（`known`）那条汇总地板规定"每条腿的场数
 必须等于场景表里该有的场数、零断言的场直接红"。0 场就是被它点名的（`prefix 腿跑了 0 场，应有 9 场`），
 而不是被"退出码非零"这种含糊话糊过去的。地板门这轮第二次付账（第一次是上面那三段现场证据）。
 
@@ -490,8 +496,8 @@ P10:0 / P10:0 / P10:0 / P10:0，见 `README.md` 第三节的规则命中口径�
 12×12：把 `parseSize` 夹回菜单三档的话界面会说谎——seed 还是那颗、盘却变成 6×6，
 旧笔迹全被指纹对账丢掉（这段理由就写在 `js/ui/puzzle.js:19-24`（`parseSize`）的注释里）。
 所以「菜单」与「引擎表」是两个东西：`js/ui/puzzle.js:17` 的 `SIZES` 只含 `inMenu` 的那几档，
-`js/main.js:562-568` 的 `SIZES` 只渲染前者，而 boot 场把这条边界钉成浏览器断言——下拉里的档位必须逐字等于
-`TIERS.filter(inMenu)`、且不少于 3 档（`tools/scenarios.js:447-454` 的 `inMenu`）。这条断言是双向的：
+`js/main.js:800-808` 的 `SIZES` 只渲染前者，而 boot 场把这条边界钉成浏览器断言——下拉里的档位必须逐字等于
+`TIERS.filter(inMenu)`、且不少于 3 档（`tools/scenarios.js:670-673` 的 `inMenu`）。这条断言是双向的：
 引擎降了档而界面还留着 ⇒ 红（玩家点到一句拿不到货的承诺）；界面自己多列一档 ⇒ 也红。
 
 ### 第二格（2026-10-04）：B1 那条线被机器咬了，改的是钉法不是公式
@@ -556,8 +562,8 @@ PLATEAU 累计**（确定量，逐颗对死）与逐样本墙钟（×[0.4, 3]，
 
 菜单三档的降级路径是**已经写进产品**的那一条：撞满 `maxAttempts=60` ⇒ `shipBoard` 如实返回
 `NO_BOARD`（`js/engine/generate.js:171-174`），界面最多再敲 8 颗自己 mint 的 seed
-（`js/main.js:26-28`、`js/main.js:275-284` 的 `MINT_TRIES`），全失败就把 `NO_BOARD` 与试了几颗照直说出来
-（`js/main.js:287-289` 的 `tries`），并且明确「调用方给了明确 seed 时不许偷偷换」
+（`js/main.js:26-28`、`js/main.js:314` 的 `MINT_TRIES`），全失败就把 `NO_BOARD` 与试了几颗照直说出来
+（`js/main.js:323` 的 `tries`），并且明确「调用方给了明确 seed 时不许偷偷换」
 （`js/ui/puzzle.js:33-36` 的 `shipBoard`）。本轮菜单三档观测到的最坏 attempts 是 6 / 11 / 32（6×6→10×10），
 一次都没撞穿封顶——**这条路径不是「保证出得了盘」**，`README.md` 也因此没把它写成承诺。
 

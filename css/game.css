@@ -289,6 +289,15 @@ select {
 .acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-gutter); }
 .acts #btn-new { grid-column: 2 / -1; }
 
+/* 设置类控件单独一行（音效开关 / 全屏），不进顶栏：上面 .acts 那排是「玩法动作」，
+   这一排是「设置」。两颗都是「图标 + 文字」的形状，视觉上跟纯文字按钮分得开。 */
+.settings { display: flex; gap: var(--space-gutter); }
+.settings button { flex: 1 1 0; }
+
+/* 带精灵图标的按钮（.ic + .lb）：图标与文字要并排且在一条基线上。
+   不写这条的话 img 走行内基线对齐，图标会比文字低半格；写了 inline-flex 才是居中。 */
+button:has(> .ic) { display: inline-flex; align-items: center; justify-content: center; }
+
 .stats {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -17,10 +17,20 @@ cd "$HERE" || exit 2
 # 进站点的：玩家浏览器会去要的东西，一个都不落。
 cp index.html manifest.webmanifest sw.js "$DEST/"
 cp -r css js "$DEST/"
-# 位图目录名不统一（icons/ 与 assets/ 都在用）：按存在与否收，缺的那个不是错误。
-for d in icons assets; do
-  [ -d "$d" ] && cp -r "$d" "$DEST/"
+# 位图：页面要的是**顶层 icons/**（index.html 与 manifest.webmanifest 引的就是 icons/…）
+# 与 assets/ 下的三份。
+#
+# ⚠ assets/ **不能整目录拷**：assets/gen/ 是出题器源码，整目录拷就把它挂到公网上——
+# allowlist 的意义就在这里（tools/verify.sh 的腿4 正是拿「assets/gen/make_art.mjs 必须 404」
+# 证伪这份名单的；名单里没有它、真产物里却有它，那条腿就永远绿着）。
+# 所以这里按「源:去处」逐份点名，缺的那份不是错误（不同仓的位图目录名不统一）。
+mkdir -p "$DEST/assets"
+for pair in "assets/icons:assets" "assets/textures:assets" "assets/sprites:assets" "icons:."; do
+  src=${pair%%:*}
+  dst=${pair##*:}
+  [ -d "$src" ] && cp -r "$src" "$DEST/$dst"
 done
+[ -f assets/og.png ] && cp assets/og.png "$DEST/assets/"
 
 # 不进站点的（有意为之，别"顺手加上"）：
 #   server.cjs / electron/     本地与桌面形态的宿主，浏览器用不到，传上去只是把源码摊开

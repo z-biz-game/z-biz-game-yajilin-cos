@@ -238,16 +238,16 @@ quiet_leg() { # quiet_leg <腿名>：控制台里但凡有 [EXCEPTION]/[log:erro
   [ "${n:-0}" = 0 ]
 }
 
-# ── 腿 1：语法闸 + 六套 suite + golden 对账 + 剂量表 ──────────────────────────────
+# ── 腿 1：语法闸 + 十二套 suite + golden 对账 + 剂量表 ────────────────────────────
 if [ "${SKIP_UNIT:-0}" = 1 ]; then
   echo "=== 腿1 unit：SKIP_UNIT=1，跳过（浏览器那几条腿照样跑）==="
 else
-  echo "=== 腿1 unit：node tools/check.mjs（node --check 语法闸 + 禁 token 源闸 + 六套 + golden + 剂量表）==="
+  echo "=== 腿1 unit：node tools/check.mjs（node --check 语法闸 + 禁 token 源闸 + 十二套 + golden + 剂量表）==="
   UNIT_LOG=$LOGD/unit.log
   UEXIT=0
   node tools/check.mjs >"$UNIT_LOG" 2>&1 || UEXIT=$?
   grep -E '^(RESULT|DOSE|⚠|✗)' "$UNIT_LOG" | sed 's/^/  /' || true
-  run "node 门禁：六套齐、零红、退出码 0" env UEXIT=$UEXIT UNIT_LOG="$UNIT_LOG" python3 -c "
+  run "node 门禁：十二套齐、零红、退出码 0" env UEXIT=$UEXIT UNIT_LOG="$UNIT_LOG" python3 -c "
 import os, re, sys
 tot = fails = 0
 names = []
@@ -262,7 +262,8 @@ print('  node 侧：%d 行 RESULT（%s），合计 %d 条断言，红 %d 条，�
     len(names), ' '.join(names), tot, fails, os.environ['UEXIT']))
 # 套数不足 = 当场红。少跑一套是这一族门禁最常见的腐化方式：某套改了名、某套崩在 import 之前，
 # 剩下的照样绿，而出口码还是 0。
-need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe', 'store-test']
+need = ['rule-test', 'pencil-test', 'counter-test', 'golden-write', 'golden-test', 'generator-probe',
+        'store-test', 'frame-rate-test', 'behavior-test', 'keyboard-test', 'asset-test', 'sw-test']
 missing = [n for n in need if n not in names]
 for x in missing:
     print('  FAIL 缺 RESULT 行：' + x)
@@ -317,7 +318,10 @@ if [ "$LOCAL" = 1 ]; then
   PROOT=$(mktemp -d -p "$TMPDIR")
   mkdir -p "$PROOT/$REPO"
   # 名单与 pages.yml 里 Assemble static site 那一步逐条对齐：index.html、manifest.webmanifest、
-  # sw.js、css/、js/、assets/{icons,textures,sprites} + assets/og.png 进产物。
+  # sw.js、css/、js/、**顶层 icons/**（manifest 与 index.html 引的就是 icons/…）+ assets/{icons,textures,sprites}
+  # + assets/og.png 进产物。
+  # 顶层 icons/ 不能少：少它的后果不是报错而是**静默 404**——manifest 里的三张图标取不到，
+  # 浏览器只在控制台哼一声，页面照样能玩，于是「上线少了文件」这件事要等用户投诉才发现。
   # assets/ 不能整目录挂上来：assets/gen/ 是出题器源码，挂在替身根下就等于挂在公网下，
   # 而腿4 正是拿「assets/gen/make_art.mjs 必须 404」来证伪这份名单的。
   ln -s "$HERE/index.html" "$PROOT/$REPO/index.html"
@@ -325,6 +329,7 @@ if [ "$LOCAL" = 1 ]; then
   ln -s "$HERE/sw.js" "$PROOT/$REPO/sw.js"
   ln -s "$HERE/css" "$PROOT/$REPO/css"
   ln -s "$HERE/js" "$PROOT/$REPO/js"
+  ln -s "$HERE/icons" "$PROOT/$REPO/icons"
   mkdir -p "$PROOT/$REPO/assets"
   for d in icons textures sprites; do ln -s "$HERE/assets/$d" "$PROOT/$REPO/assets/$d"; done
   ln -s "$HERE/assets/og.png" "$PROOT/$REPO/assets/og.png"
@@ -376,7 +381,7 @@ for p, c in bad:
 # 两张纹理是 css/game.css 用 url(../assets/textures/…) 引的，它们 404 的话页面只会
 # 「安静地没有纸纹」——浏览器不会为一张缺背景的图报错，所以这条得由门禁去够。
 WANT = ['index.html', 'css/game.css', 'js/main.js', 'js/engine/model.js', 'js/render/board.js',
-        'manifest.webmanifest', 'sw.js', 'assets/icons/icon-192.png', 'assets/og.png',
+        'manifest.webmanifest', 'sw.js', 'icons/icon-192.png', 'icons/icon-512.png', 'assets/og.png',
         'assets/textures/paper-256.png', 'assets/textures/field-256.png']
 hit = [p for p in WANT if code(p) != '200']
 for p in hit:
