@@ -23,7 +23,8 @@
     "behavior": "node tools/behavior-test.mjs",
     "keyboard": "node tools/keyboard-test.mjs",
     "assets": "node tools/asset-test.mjs",
-    "sw": "node tools/sw-test.mjs"
+    "sw": "node tools/sw-test.mjs",
+    "docs": "node tools/docs-test.mjs"
   },
   "keywords": [
     "game",
