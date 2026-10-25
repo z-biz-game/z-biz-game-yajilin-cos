@@ -78,7 +78,7 @@ function decodePng(buf) {
     colors.add((r << 24) ^ (g << 16) ^ (b << 8) ^ a);
     if (a > 16) opaque++;
   }
-  return { w: ihdr.w, h: ihdr.h, ch, colors: colors.size, opaque, pixels: ihdr.w * ihdr.h, sha: createHash('sha256').update(buf).digest('hex').slice(0, 12) };
+  return { w: ihdr.w, h: ihdr.h, ch, colors: colors.size, opaque, pixels: ihdr.w * ihdr.h, infl: createHash('sha256').update(raw).digest('hex'), sha: createHash('sha256').update(buf).digest('hex').slice(0, 12) };
 }
 
 // 一张图「可读」= 签名对、解码对、颜色不止一种、有实际覆盖的像素
@@ -193,6 +193,47 @@ function shaDrift(baseline, actual) {
   return bad;
 }
 
+/* ---- 图像数据对拍尺（判据用这一把，不是文件字节）----
+   为什么不用文件字节当判据：PNG 的**压缩流**由编码器版本决定（zlib 的 deflate 输出随
+   zlib 版本变），而**图像数据**（IDAT 解压后的行滤波字节）由生成器决定。实测 2026-10-25：
+   本机 Node 26 的 zlib 与生成时那版不同 ⇒ 30 张 PNG 的 IDAT 长度全都不同
+   （icon-1024：75817 vs 75825 字节），但解压后 4195328 字节逐字节相同。
+   而 CI 钉的是 Node 22（.github/workflows/ci.yml:24）⇒ 判据若钉在文件字节上，
+   **CI 与开发机不可能同时绿**：它量的是「这台机器的 zlib 版本」，不是「这张图是谁画的」。
+   判据改钉在图像数据上：守住「盘上的图必须就是生成器那张图」，且与 zlib 版本无关。
+   本仓生成器每行 filter=none（assets/gen/make_art.mjs:442）⇒ 解压流就是像素本身，
+   比「解压 + 逐字节反滤波」便宜两个数量级（原生 inflate，不用 JS 循环）。
+   压缩流字节差仍然报出来（那是真的存在的事实），但不判红。 */
+function imageDataMapOfPngs(root) {
+  const map = {};
+  (function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) { if (name !== 'gen') walk(p); }
+      else if (name.endsWith('.png')) {
+        const rel = path.relative(root, p).split(path.sep).join('/');
+        const d = decodePng(fs.readFileSync(p));
+        map[rel] = d.bad ? `decode-failed:${d.bad}` : d.infl;
+      }
+    }
+  })(path.join(root, 'assets'));
+  return map;
+}
+
+function dataDrift(baseline, actual) {
+  const bad = [];
+  for (const rel of new Set([...Object.keys(baseline), ...Object.keys(actual)])) {
+    if (!(rel in baseline)) bad.push(`${rel} 只出现在生成端（盘上没有这张）`);
+    else if (!(rel in actual)) bad.push(`${rel} 只存在于盘上（生成器不产它——盘上这张来路不明）`);
+    else if (baseline[rel] !== actual[rel]) {
+      bad.push(`${rel} 图像数据不同：盘上 ${String(baseline[rel]).slice(0, 12)} vs 现跑 ${String(actual[rel]).slice(0, 12)}`);
+    }
+  }
+  return bad;
+}
+
 const GEN_REL = 'assets/gen/make_art.mjs';
 const gen = fs.readFileSync(path.join(ROOT, GEN_REL), 'utf8');
 ok(purityBad(gen).length === 0, `make_art.mjs 出现时间/随机/环境源：${purityBad(gen).join(' ')} —— 同输入不同字节，资产就不可复现`);
@@ -244,7 +285,7 @@ const shaOfPngs = (root) => {
   return map;
 };
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'yajilin-art-'));
-let staged = [], drift = [], printed = 0, genMs = 0;
+let staged = [], drift = [], byteDrift = [], printed = 0, genMs = 0;
 try {
   staged = stageGenIn(ROOT, TMP);
   const t0 = process.hrtime.bigint();
@@ -252,8 +293,15 @@ try {
   genMs = Number(process.hrtime.bigint() - t0) / 1e6;
   ok(res.status === 0, `临时目录里跑 make_art.mjs 退出码 ${res.status}：${(res.stderr || '').slice(0, 200)}`);
   const actual = shaOfPngs(TMP);
-  drift = shaDrift(Object.fromEntries(allPng.map((p) => [path.relative(ROOT, p).split(path.sep).join('/'), createHash('sha256').update(fs.readFileSync(p)).digest('hex')])), actual);
+  const actualData = imageDataMapOfPngs(TMP);
+  const baseData = imageDataMapOfPngs(ROOT);
+  byteDrift = shaDrift(Object.fromEntries(allPng.map((p) => [path.relative(ROOT, p).split(path.sep).join('/'), createHash('sha256').update(fs.readFileSync(p)).digest('hex')])), actual);
+  drift = dataDrift(baseData, actualData);
   ok(drift.length === 0, `生成器复现不出盘上资产（${drift.length} 处）：${drift.slice(0, 4).join(' | ')}`);
+  if (byteDrift.length) {
+    note(`编码漂移 ${byteDrift.length} 处：PNG 压缩流随 zlib 版本变（CI 钉 Node 22，本机 ${process.versions.node}），`
+      + `图像数据逐张相同 ⇒ 不判红；${byteDrift.slice(0, 2).join(' | ')}`);
+  }
   // 生成器自报的那一行（name  W×H  BYTES  sha12）必须与它真正写下的字节对得上
   for (const line of (res.stdout || '').split('\n')) {
     const m = /^(\S+\.png)\s+(\d+)×(\d+)\s+(\d+)B\s+([0-9a-f]{12})$/.exec(line.trim());
@@ -269,19 +317,21 @@ try {
   }
   ok(printed === allPng.length, `生成器只自报了 ${printed}/${allPng.length} 张（末行汇总不算自报）`);
 
-  // 阴性对照：把对拍清单里任意一张的 sha 改一个字符，尺子必须只报出那一张
-  const keys = Object.keys(actual).sort();
+  // 阴性对照：把对拍清单里任意一张的图像数据改一个字符，尺子必须只报出那一张
+  const keys = Object.keys(actualData).sort();
   for (const tamper of [0, keys.length - 1]) {
-    const forged = { ...actual };
+    const forged = { ...actualData };
     const k = keys[tamper];
-    forged[k] = 'f' + actual[k].slice(1) === actual[k] ? '0' + actual[k].slice(1) : 'f' + actual[k].slice(1);
-    const d2 = shaDrift(forged, actual);
-    ok(d2.length === 1 && d2[0].includes(k), `sha 篡改阴性对照失手（改 ${k} → 报 ${d2.length} 处）`);
+    const head = String(forged[k]).slice(0, -1);
+    const tail = String(forged[k]).slice(-1);
+    forged[k] = head + (tail === '0' ? '1' : '0');
+    const d2 = dataDrift(forged, actualData);
+    ok(d2.length === 1 && d2[0].includes(k), `图像数据篡改阴性对照失手（改 ${k} → 报 ${d2.length} 处）`);
   }
 } finally {
   fs.rmSync(TMP, { recursive: true, force: true });
 }
-note(`复现门：临时目录搬了 ${staged.length} 个源文件（${staged.join(' ')}），真跑 ${genMs.toFixed(0)}ms 产 ${Object.keys(allPng).length} 张，逐字节对拍漂移 ${drift.length} 处，自报行核验 ${printed} 张`);
+note(`复现门：临时目录搬了 ${staged.length} 个源文件（${staged.join(' ')}），真跑 ${genMs.toFixed(0)}ms 产 ${Object.keys(allPng).length} 张，图像数据对拍漂移 ${drift.length} 处（文件字节漂移 ${byteDrift.length} 处 = PNG 压缩流随 zlib 版本变，图像数据逐张相同），自报行核验 ${printed} 张`);
 
 /* ---------- 阴性对照：三种假样本必须都被抓 ---------- */
 const fakes = [
